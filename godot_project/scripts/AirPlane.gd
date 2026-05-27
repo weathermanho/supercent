@@ -23,6 +23,12 @@ var _world_target_set: bool = false
 ## Axis-aligned corners updated each frame for collision queries elsewhere.
 var corners: Array[Vector3] = []
 
+## Smoothed instantaneous velocity in world space (units/sec).
+## Used by missile launch to add inheritance — feels like the plane "throws" the missile.
+var estimated_velocity: Vector3 = Vector3.ZERO
+var _prev_position: Vector3 = Vector3.ZERO
+const VEL_SMOOTHING := 0.3  # 0=instant, 1=never updates
+
 
 func _ready() -> void:
 	corners.resize(8)
@@ -106,6 +112,8 @@ func _ready() -> void:
 	suspension.rotation.z = -deg_to_rad(0.3)
 	add_child(suspension)
 
+	_prev_position = global_position
+
 
 func set_mouse_pos(p: Vector2) -> void:
 	_mouse_pos = p
@@ -131,6 +139,11 @@ func _process(delta: float) -> void:
 		_update_playing(dt_ms)
 	else:
 		_update_falling(dt_ms)
+
+	var dt_s: float = max(delta, 0.0001)
+	var instant: Vector3 = (global_position - _prev_position) / dt_s
+	estimated_velocity = estimated_velocity.lerp(instant, 1.0 - VEL_SMOOTHING)
+	_prev_position = global_position
 
 	_update_corners()
 
