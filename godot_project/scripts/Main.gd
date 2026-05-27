@@ -19,6 +19,7 @@ const PLANE_BASE_X := -100.0
 
 @onready var camera: Camera3D = $Camera3D
 @onready var shaker: Node = $Camera3D/Shaker
+@onready var time_scaler: Node = $TimeScaler
 @onready var hud: CanvasLayer = $HUD
 @onready var distance_label: Label = $HUD/Margin/VBox/DistanceLabel
 @onready var energy_bar: ProgressBar = $HUD/Margin/VBox/EnergyBar
