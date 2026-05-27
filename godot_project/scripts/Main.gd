@@ -418,15 +418,29 @@ func _update_particles(dt_ms: float) -> void:
 
 
 func _on_giant_hit(g: Node3D, killed: bool) -> void:
-	# Per-hit juice (small): a chip, not a kill yet.
-	_spawn_particles_at(g.position, 20, 1, 8)
-	_spawn_shockwave(g.position, 12.0, 0.4)
-	shaker.shake(GameConfig.shake_hit_intensity * 1.5, GameConfig.shake_hit_duration)
-	time_scaler.request_hitstop(GameConfig.hitstop_duration)
-	flash_overlay.flash(0.2, 0.08)
-	# Full giant-kill juice is added in Task 11.
-	if killed:
-		print("giant killed (juice combo TBD in Task 11)")
+	if not killed:
+		# Chip hit: medium juice.
+		_spawn_particles_at(g.position, 25, 1, 9)
+		_spawn_shockwave(g.position, 14.0, 0.4)
+		shaker.shake(GameConfig.shake_hit_intensity * 1.6, GameConfig.shake_hit_duration * 1.3)
+		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
+		flash_overlay.flash(0.22, 0.10)
+		_make_white_spheres(g.position, false)
+		return
+
+	# Kill: full showpiece combo.
+	time_scaler.request_slowmo(GameConfig.slowmo_giant_scale, GameConfig.slowmo_giant_duration)
+	shaker.shake(GameConfig.shake_giant_intensity, GameConfig.shake_giant_duration)
+	flash_overlay.flash(0.4, 0.35)
+	_spawn_shockwave(g.position, 40.0, 0.8)
+	_make_white_spheres(g.position, true)
+	_spawn_particles_at(g.position, 80, 1, 12)
+
+	# Remove from _targets array (so it stops being hit-tested) but fade the mesh.
+	var idx: int = _targets.find(g)
+	if idx >= 0:
+		_targets.remove_at(idx)
+	g.start_fade(0.6)
 
 
 func _spawn_shockwave(pos: Vector3, end_scale_: float, duration_: float) -> void:
