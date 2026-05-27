@@ -76,6 +76,44 @@ var distance_for_ennemies_spawn: int = 50
 
 var status: int = STATUS_PLAYING
 
+# --- Showpiece additions -----------------------------------------------------
+
+## Global game-time multiplier. 1.0 = normal. <1.0 = slowmo. 0.0 = freeze.
+## Main._process multiplies dt_ms by this before passing to all step() callers.
+var time_scale: float = 1.0
+
+## Current weapon power level (1..3). ShowpieceDirector increments by distance.
+var weapon_stage: int = 1
+
+## Loaded from user://best.save at boot. Updated on game over.
+var best_distance: int = 0
+
+# Missile tuning (moved out of Missle.gd so it can be tweaked at runtime).
+var missile_initial_forward_speed: float = 120.0
+var missile_initial_drop_speed: float = 60.0
+var missile_drop_gravity: float = 500.0       # gravity during drop phase (0..DROP_DURATION)
+var missile_boost_gravity: float = 120.0      # gravity also during boost phase
+var missile_boost_accel: float = 800.0        # weakened from 4500 -> 800 (less homing)
+var missile_max_speed: float = 2200.0
+var missile_drop_duration: float = 0.3
+var missile_scale_stage1: float = 0.4
+var missile_scale_stage2: float = 0.55
+var missile_scale_stage3: float = 0.7
+var missile_lock_radius: float = 8.0          # was 18, narrowed so player must aim
+
+# Showpiece distances (m)
+var giant_distance_thresholds: Array[int] = [800, 1600, 2400]
+var weapon_upgrade_distances: Array[int] = [400, 1200]
+
+# Juice constants
+var shake_hit_intensity: float = 8.0
+var shake_hit_duration: float = 0.12
+var hitstop_duration: float = 0.05
+var slowmo_giant_scale: float = 0.25
+var slowmo_giant_duration: float = 1.5
+var shake_giant_intensity: float = 30.0
+var shake_giant_duration: float = 0.6
+
 
 func reset_to_defaults() -> void:
 	speed = 0.0
@@ -94,6 +132,8 @@ func reset_to_defaults() -> void:
 	plane_collision_speed_y = 0.0
 	plane_fall_speed = 0.001
 	status = STATUS_PLAYING
+	time_scale = 1.0
+	weapon_stage = 1
 
 
 ## Mirrors `normalize(v, vmin, vmax, tmin, tmax)` in tester.cpp.
