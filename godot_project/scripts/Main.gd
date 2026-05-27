@@ -306,14 +306,21 @@ func _fly_missles(dt_ms: float) -> void:
 		# Target hit: swept segment-sphere check (missile moves in 3D now).
 		for j in _targets.size():
 			var t_pos: Vector3 = _targets[j].position
-			if _segment_point_distance(m.prev_position, m.position, t_pos) < HIT_RADIUS:
-				_spawn_particles_at(t_pos, 30, 1, 8)
-				_spawn_shockwave(t_pos, 8.0, 0.4)
-				shaker.shake(GameConfig.shake_hit_intensity, GameConfig.shake_hit_duration)
-				time_scaler.request_hitstop(GameConfig.hitstop_duration)
-				flash_overlay.flash(0.15, 0.06)
-				_targets[j].queue_free()
-				_targets.remove_at(j)
+			if _segment_point_distance(m.prev_position, m.position, t_pos) < (HIT_RADIUS * (8.0 if _targets[j].is_giant else 1.0)):
+				# Capture flag BEFORE _on_giant_hit mutates _targets.
+				var is_g: bool = _targets[j].is_giant
+				var killed: bool = _targets[j].take_damage(1)
+				if is_g:
+					_on_giant_hit(_targets[j], killed)
+				else:
+					_spawn_particles_at(t_pos, 30, 1, 8)
+					_spawn_shockwave(t_pos, 8.0, 0.4)
+					shaker.shake(GameConfig.shake_hit_intensity, GameConfig.shake_hit_duration)
+					time_scaler.request_hitstop(GameConfig.hitstop_duration)
+					flash_overlay.flash(0.15, 0.06)
+					if killed:
+						_targets[j].queue_free()
+						_targets.remove_at(j)
 				hit = true
 				break
 
@@ -392,6 +399,18 @@ func _update_particles(dt_ms: float) -> void:
 		if not _particles[i].step(dt_ms):
 			to_remove.append(i)
 	_cleanup(to_remove, _particles)
+
+
+func _on_giant_hit(g: Node3D, killed: bool) -> void:
+	# Per-hit juice (small): a chip, not a kill yet.
+	_spawn_particles_at(g.position, 20, 1, 8)
+	_spawn_shockwave(g.position, 12.0, 0.4)
+	shaker.shake(GameConfig.shake_hit_intensity * 1.5, GameConfig.shake_hit_duration)
+	time_scaler.request_hitstop(GameConfig.hitstop_duration)
+	flash_overlay.flash(0.2, 0.08)
+	# Full giant-kill juice is added in Task 11.
+	if killed:
+		print("giant killed (juice combo TBD in Task 11)")
 
 
 func _spawn_shockwave(pos: Vector3, end_scale_: float, duration_: float) -> void:
