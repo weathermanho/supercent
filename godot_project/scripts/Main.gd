@@ -13,6 +13,7 @@ const TargetScene := preload("res://scenes/Target.tscn")
 const ParticleScript := preload("res://scripts/Particle.gd")
 const WhiteSphereScript := preload("res://scripts/WhiteSphere.gd")
 const GuideOverlayScript := preload("res://scripts/GuideOverlay.gd")
+const ShockwaveRingScript := preload("res://scripts/ShockwaveRing.gd")
 
 const STEP_TIME := 0.01
 const PLANE_BASE_X := -100.0
@@ -21,6 +22,7 @@ const PLANE_BASE_X := -100.0
 @onready var shaker: Node = $Camera3D/Shaker
 @onready var time_scaler: Node = $TimeScaler
 @onready var hud: CanvasLayer = $HUD
+@onready var flash_overlay: ColorRect = $HUD/Flash
 @onready var distance_label: Label = $HUD/Margin/VBox/DistanceLabel
 @onready var energy_bar: ProgressBar = $HUD/Margin/VBox/EnergyBar
 @onready var status_label: Label = $HUD/Margin/VBox/StatusLabel
@@ -33,6 +35,7 @@ var _structures: Array[Node3D] = []
 var _targets: Array[Node3D] = []  # red lock-on targets attached to walls
 var _particles: Array[Node3D] = []
 var _white_spheres: Array[Node3D] = []
+var _shockwaves: Array[Node3D] = []
 var _guide_overlay: Node3D
 
 
@@ -83,6 +86,7 @@ func _process(delta: float) -> void:
 	_move_structures(dt_ms)
 	_update_white_spheres(dt_ms)
 	_update_particles(dt_ms)
+	_update_shockwaves(dt_ms)
 
 	_guide_overlay.update_overlay(airplane.position, _targets)
 	_update_hud()
@@ -377,6 +381,23 @@ func _update_particles(dt_ms: float) -> void:
 		if not _particles[i].step(dt_ms):
 			to_remove.append(i)
 	_cleanup(to_remove, _particles)
+
+
+func _spawn_shockwave(pos: Vector3, end_scale_: float, duration_: float) -> void:
+	var ring: Node3D = ShockwaveRingScript.new()
+	ring.end_scale = end_scale_
+	ring.duration = duration_
+	add_child(ring)
+	ring.position = pos
+	_shockwaves.append(ring)
+
+
+func _update_shockwaves(dt_ms: float) -> void:
+	var to_remove: Array[int] = []
+	for i in _shockwaves.size():
+		if not _shockwaves[i].step(dt_ms):
+			to_remove.append(i)
+	_cleanup(to_remove, _shockwaves)
 
 
 func _update_white_spheres(dt_ms: float) -> void:
