@@ -124,8 +124,8 @@ func _process(delta: float) -> void:
 	_p_angle += PROP_SPEED_RAD_PER_SEC * delta
 	_propeller.rotation.x = _p_angle
 
-	# Delta in milliseconds (the original used `timeGetTime()`).
-	var dt_ms: float = delta * 1000.0
+	# Delta in milliseconds (the original used `timeGetTime()`), scaled by global time_scale.
+	var dt_ms: float = delta * 1000.0 * GameConfig.time_scale
 
 	if GameConfig.status == GameConfig.STATUS_PLAYING:
 		_update_playing(dt_ms)

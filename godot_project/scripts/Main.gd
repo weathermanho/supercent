@@ -65,7 +65,7 @@ func _setup_lighting() -> void:
 
 
 func _process(delta: float) -> void:
-	var dt_ms: float = delta * 1000.0
+	var dt_ms: float = delta * 1000.0 * GameConfig.time_scale
 
 	# Pass current mouse position (normalized) to airplane.
 	airplane.set_mouse_pos(_get_normalized_mouse())

@@ -27,7 +27,7 @@ func _ready() -> void:
 
 ## Returns false once expired, so the manager can free it.
 func step(dt_ms: float) -> bool:
-	on_time += 0.01
+	on_time += dt_ms / 1000.0
 	position.z += inc_z
 	position.y += inc_y
 	position.x -= GameConfig.speed * dt_ms * GameConfig.ennemies_speed * 5000.0
