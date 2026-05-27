@@ -21,6 +21,7 @@ const PLANE_BASE_X := -100.0
 @onready var camera: Camera3D = $Camera3D
 @onready var shaker: Node = $Camera3D/Shaker
 @onready var time_scaler: Node = $TimeScaler
+@onready var director: Node = $Director
 @onready var hud: CanvasLayer = $HUD
 @onready var flash_overlay: ColorRect = $HUD/Flash
 @onready var distance_label: Label = $HUD/Margin/VBox/DistanceLabel
@@ -41,6 +42,7 @@ var _guide_overlay: Node3D
 
 func _ready() -> void:
 	GameConfig.reset_to_defaults()
+	director.reset()
 
 	# Airplane.
 	airplane = AirPlaneScene.instantiate()
@@ -118,6 +120,7 @@ func _tick_playing(dt_ms: float) -> void:
 	GameConfig.distance += GameConfig.speed * dt_ms * GameConfig.ratio_speed_distance
 	GameConfig.energy -= GameConfig.speed * dt_ms * GameConfig.ratio_speed_energy
 	GameConfig.energy = maxf(0.0, GameConfig.energy)
+	director.tick_weapon(dt_ms / 1000.0)
 	if GameConfig.energy < 1.0:
 		GameConfig.status = GameConfig.STATUS_GAME_OVER
 
@@ -154,6 +157,9 @@ func _get_world_cursor() -> Vector3:
 # ----- Buildings -------------------------------------------------------------
 
 func _construct_building() -> void:
+	if director.consume_giant_due():
+		_construct_giant()
+		return
 	# Two big buildings on either side of the corridor.
 	var top := BuildingScene.instantiate()
 	add_child(top); _buildings.append(top)
@@ -186,6 +192,16 @@ func _construct_building() -> void:
 	target.position = Vector3(wall.position.x - ww * 0.5 - 30.0, wall.position.y, wall.position.z)
 	target.wall = wall
 	_targets.append(target)
+
+
+func _construct_giant() -> void:
+	# A standalone giant target — no flanking buildings, so it dominates the frame.
+	var giant := TargetScene.instantiate()
+	giant.is_giant = true
+	add_child(giant)
+	giant.position = Vector3(4000.0, 150.0, 0.0)
+	giant.wall = null
+	_targets.append(giant)
 
 
 func _build_structures() -> void:
