@@ -263,7 +263,16 @@ func _move_structures(dt_ms: float) -> void:
 # ----- Missiles --------------------------------------------------------------
 
 func _fire_missle() -> void:
-	_spawn_missle(0.0)  # single straight shot — multi-fan added in weapon_stage branch later
+	match GameConfig.weapon_stage:
+		1:
+			_spawn_missle(0.0)
+		2:
+			_spawn_missle(-6.0)
+			_spawn_missle(6.0)
+		_:
+			_spawn_missle(-10.0)
+			_spawn_missle(0.0)
+			_spawn_missle(10.0)
 
 
 func _spawn_missle(yaw_offset_deg: float) -> void:
