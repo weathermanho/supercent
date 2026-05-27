@@ -54,21 +54,12 @@ func _ready() -> void:
 	_guide_overlay = GuideOverlayScript.new()
 	add_child(_guide_overlay)
 
-	# Lighting + camera.
 	# Position the camera *behind* the plane (more negative X) and slightly
 	# above, looking forward along +X — the direction enemies/buildings come
 	# from. This makes objects fly out of the screen toward the viewer.
-	_setup_lighting()
+	# Lighting is now owned by the Atmosphere node.
 	camera.position = Vector3(-450.0, 200.0, 0.0)
 	camera.look_at(Vector3(1000.0, 100.0, 0.0), Vector3.UP)
-
-
-func _setup_lighting() -> void:
-	var sun := DirectionalLight3D.new()
-	sun.rotation = Vector3(deg_to_rad(-50.0), deg_to_rad(-35.0), 0.0)
-	sun.light_energy = 1.0
-	sun.shadow_enabled = true
-	add_child(sun)
 
 
 func _process(delta: float) -> void:

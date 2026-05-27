@@ -1,10 +1,11 @@
-[gd_scene load_steps=6 format=3 uid="uid://115jun14vjho"]
+[gd_scene load_steps=7 format=3 uid="uid://115jun14vjho"]
 
 [ext_resource type="Script" path="res://scripts/Main.gd" id="1"]
 [ext_resource type="Script" path="res://scripts/CameraShaker.gd" id="2"]
 [ext_resource type="Script" path="res://scripts/TimeScaler.gd" id="3"]
 [ext_resource type="Script" path="res://scripts/FlashOverlay.gd" id="4"]
 [ext_resource type="Script" path="res://scripts/ShowpieceDirector.gd" id="5"]
+[ext_resource type="Script" path="res://scripts/Atmosphere.gd" id="6"]
 
 [node name="Main" type="Node3D"]
 script = ExtResource("1")
@@ -23,6 +24,11 @@ script = ExtResource("3")
 
 [node name="Director" type="Node" parent="."]
 script = ExtResource("5")
+
+[node name="Atmosphere" type="Node3D" parent="."]
+script = ExtResource("6")
+
+[node name="WorldEnv" type="WorldEnvironment" parent="Atmosphere"]
 
 [node name="HUD" type="CanvasLayer" parent="."]
 
