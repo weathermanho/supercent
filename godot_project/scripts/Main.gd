@@ -1,0 +1,398 @@
+extends Node3D
+## Top-level coordinator. Spawns/updates/draws everything that the original
+## `Tester` class managed inside its `Update()` / `Draw()` pair.
+##
+## The original game-loop branches:
+##   - status PLAYING:  spawn ennemies, structures, coins; advance distance / level / energy.
+##   - status GAME_OVER: plane falls; particles freeze.
+
+const AirPlaneScene := preload("res://scenes/AirPlane.tscn")
+const MissleScene := preload("res://scenes/Missle.tscn")
+const BuildingScene := preload("res://scenes/Building.tscn")
+const TargetScene := preload("res://scenes/Target.tscn")
+const ParticleScript := preload("res://scripts/Particle.gd")
+const WhiteSphereScript := preload("res://scripts/WhiteSphere.gd")
+const GuideOverlayScript := preload("res://scripts/GuideOverlay.gd")
+
+const STEP_TIME := 0.01
+const PLANE_BASE_X := -100.0
+
+@onready var camera: Camera3D = $Camera3D
+@onready var hud: CanvasLayer = $HUD
+@onready var distance_label: Label = $HUD/Margin/VBox/DistanceLabel
+@onready var energy_bar: ProgressBar = $HUD/Margin/VBox/EnergyBar
+@onready var status_label: Label = $HUD/Margin/VBox/StatusLabel
+
+var airplane: Node3D
+
+var _missles: Array[Node3D] = []
+var _buildings: Array[Node3D] = []
+var _structures: Array[Node3D] = []
+var _targets: Array[Node3D] = []  # red lock-on targets attached to walls
+var _particles: Array[Node3D] = []
+var _white_spheres: Array[Node3D] = []
+var _guide_overlay: Node3D
+
+
+func _ready() -> void:
+	GameConfig.reset_to_defaults()
+
+	# Airplane.
+	airplane = AirPlaneScene.instantiate()
+	airplane.position = Vector3(PLANE_BASE_X, GameConfig.plane_default_height, 0.0)
+	airplane.scale = Vector3.ONE * GameConfig.plane_scale
+	add_child(airplane)
+
+	# Guide-line + lock-on circle overlay.
+	_guide_overlay = GuideOverlayScript.new()
+	add_child(_guide_overlay)
+
+	# Lighting + camera.
+	# Position the camera *behind* the plane (more negative X) and slightly
+	# above, looking forward along +X — the direction enemies/buildings come
+	# from. This makes objects fly out of the screen toward the viewer.
+	_setup_lighting()
+	camera.position = Vector3(-450.0, 200.0, 0.0)
+	camera.look_at(Vector3(1000.0, 100.0, 0.0), Vector3.UP)
+
+
+func _setup_lighting() -> void:
+	var sun := DirectionalLight3D.new()
+	sun.rotation = Vector3(deg_to_rad(-50.0), deg_to_rad(-35.0), 0.0)
+	sun.light_energy = 1.0
+	sun.shadow_enabled = true
+	add_child(sun)
+
+
+func _process(delta: float) -> void:
+	var dt_ms: float = delta * 1000.0
+
+	# Pass current mouse position (normalized) to airplane.
+	airplane.set_mouse_pos(_get_normalized_mouse())
+	airplane.set_world_target(_get_world_cursor())
+
+	if GameConfig.status == GameConfig.STATUS_PLAYING:
+		_tick_playing(dt_ms)
+	else:
+		_tick_falling()
+
+	_fly_missles(dt_ms)
+	_move_buildings(dt_ms)
+	_move_structures(dt_ms)
+	_update_white_spheres(dt_ms)
+	_update_particles(dt_ms)
+
+	_guide_overlay.update_overlay(airplane.position, _targets)
+	_update_hud()
+
+
+func _tick_playing(dt_ms: float) -> void:
+	# Every ~5m: drop background structures.
+	if floori(GameConfig.distance) % 5 == 0:
+		_build_structures()
+
+	var d_int := floori(GameConfig.distance)
+
+	# Speed update tick.
+	if d_int % GameConfig.distance_for_speed_update == 0 and d_int > GameConfig.speed_last_update:
+		GameConfig.speed_last_update = d_int
+		GameConfig.target_base_speed += GameConfig.increment_speed_by_time * dt_ms
+
+	# Building spawn tick (formerly enemy spawn).
+	if d_int % GameConfig.distance_for_ennemies_spawn == 0 and d_int > GameConfig.ennemy_last_spawn:
+		GameConfig.ennemy_last_spawn = d_int
+		_construct_building()
+
+	# Level update.
+	if d_int % GameConfig.distance_for_level_update == 0 and d_int > GameConfig.level_last_update:
+		GameConfig.level_last_update = d_int
+		GameConfig.level += 1
+		GameConfig.target_base_speed = GameConfig.init_speed + GameConfig.increment_speed_by_level * GameConfig.level
+
+	GameConfig.distance += GameConfig.speed * dt_ms * GameConfig.ratio_speed_distance
+	GameConfig.energy -= GameConfig.speed * dt_ms * GameConfig.ratio_speed_energy
+	GameConfig.energy = maxf(0.0, GameConfig.energy)
+	if GameConfig.energy < 1.0:
+		GameConfig.status = GameConfig.STATUS_GAME_OVER
+
+	GameConfig.base_speed += (GameConfig.target_base_speed - GameConfig.base_speed) * dt_ms * 0.02
+	GameConfig.speed = GameConfig.base_speed * GameConfig.plane_speed
+
+
+func _tick_falling() -> void:
+	# Plane animation is handled inside AirPlane.gd. We just clear particles.
+	for p in _particles:
+		p.queue_free()
+	_particles.clear()
+
+
+func _get_normalized_mouse() -> Vector2:
+	var win := get_viewport().get_visible_rect().size
+	var m := get_viewport().get_mouse_position()
+	return Vector2(-1.0 + (m.x / win.x) * 2.0, 1.0 - (m.y / win.y) * 2.0)
+
+
+## Casts a ray from the camera through the mouse cursor and returns the world
+## point where it hits the airplane's x-plane (x = PLANE_BASE_X). With this,
+## the cursor lines up with the airplane on screen pixel-for-pixel.
+func _get_world_cursor() -> Vector3:
+	var screen_pos: Vector2 = get_viewport().get_mouse_position()
+	var ray_origin: Vector3 = camera.project_ray_origin(screen_pos)
+	var ray_dir: Vector3 = camera.project_ray_normal(screen_pos)
+	if absf(ray_dir.x) < 0.0001:
+		return Vector3(PLANE_BASE_X, GameConfig.plane_default_height, 0.0)
+	var t: float = (PLANE_BASE_X - ray_origin.x) / ray_dir.x
+	return ray_origin + ray_dir * t
+
+
+# ----- Buildings -------------------------------------------------------------
+
+func _construct_building() -> void:
+	# Two big buildings on either side of the corridor.
+	var top := BuildingScene.instantiate()
+	add_child(top); _buildings.append(top)
+	top.position = Vector3(4000.0, 0.0, -200.0)
+	var top_h := 300.0 + randf() * 200.0
+	top.init_geometry(1200, top_h, 100, GameColors.BLUE, 0)
+	top.position.y = top_h * 0.5
+
+	var bot := BuildingScene.instantiate()
+	add_child(bot); _buildings.append(bot)
+	bot.position = Vector3(4000.0, 0.0, 200.0)
+	var bot_h := 300.0 + randf() * 200.0
+	bot.init_geometry(1200, bot_h, 100, GameColors.BLUE, 0)
+	bot.position.y = bot_h * 0.5
+
+	# A wall in the middle (transparent, type=1).
+	var wall := BuildingScene.instantiate()
+	add_child(wall); _buildings.append(wall)
+	var ww := 200.0 + randf() * 700.0
+	var wh := 90.0 + randf() * 70.0
+	var wd := 110.0 + randf() * 110.0
+	wall.position = Vector3(4000.0, randf() * 150.0 + wh * 0.5, -100.0 + randf() * 200.0)
+	wall.init_geometry(ww, wh, wd, GameColors.DARK_BLUE, 1)
+
+	# Target attached to the wall — a red icosahedron in front of it. The
+	# guide overlay uses `target.wall` to compute the forward-ray/wall-face
+	# intersection (matches `Tester::guideLines()` in the original).
+	var target := TargetScene.instantiate()
+	add_child(target)
+	target.position = Vector3(wall.position.x - ww * 0.5 - 30.0, wall.position.y, wall.position.z)
+	target.wall = wall
+	_targets.append(target)
+
+
+func _build_structures() -> void:
+	var n := 1 + floori(randf() * 5.0)
+	for i in n:
+		var s := BuildingScene.instantiate()
+		add_child(s); _structures.append(s)
+		var h := 30.0 + randf() * 50.0
+		s.position = Vector3(4000.0, h * 0.5, -1000.0 + randf() * 650.0)
+		s.init_geometry(30.0 + randf() * 50.0, h, 30.0 + randf() * 50.0, GameColors.WHITE, 0)
+	for i in n:
+		var s2 := BuildingScene.instantiate()
+		add_child(s2); _structures.append(s2)
+		var h2 := 30.0 + randf() * 50.0
+		s2.position = Vector3(4000.0, h2 * 0.5, 350.0 + randf() * 1000.0)
+		s2.init_geometry(30.0 + randf() * 50.0, h2, 30.0 + randf() * 50.0, GameColors.WHITE, 0)
+
+
+func _move_buildings(dt_ms: float) -> void:
+	var to_remove: Array[int] = []
+	for i in _buildings.size():
+		var b := _buildings[i]
+		b.step(dt_ms)
+
+		# Plane collision (only check center distance with a generous tolerance).
+		if absf(b.position.y - airplane.position.y) < b.h * 0.5 + 30.0:
+			if absf(b.position.z - airplane.position.z) < b.d * 0.5 + 30.0:
+				if absf(b.position.x - airplane.position.x) < b.w * 0.5 + 30.0:
+					var diff := airplane.position - b.position
+					var d := diff.length()
+					if d > 0.0:
+						GameConfig.plane_collision_speed_x = 100.0 * diff.x / d
+						GameConfig.plane_collision_speed_y = 100.0 * diff.y / d
+
+		if b.position.x < -1000.0:
+			to_remove.append(i)
+	_cleanup(to_remove, _buildings)
+
+	# Targets scroll along with their walls.
+	var to_remove_targets: Array[int] = []
+	var scroll: float = GameConfig.speed * dt_ms * GameConfig.ennemies_speed * 5000.0
+	for i in _targets.size():
+		_targets[i].position.x -= scroll
+		if _targets[i].position.x <= -1000.0:
+			to_remove_targets.append(i)
+	_cleanup(to_remove_targets, _targets)
+
+
+func _move_structures(dt_ms: float) -> void:
+	var to_remove: Array[int] = []
+	for i in _structures.size():
+		var s := _structures[i]
+		s.step(dt_ms)
+		if s.position.x < -1000.0:
+			to_remove.append(i)
+	_cleanup(to_remove, _structures)
+
+
+# ----- Missiles --------------------------------------------------------------
+
+func _fire_missle() -> void:
+	var m := MissleScene.instantiate()
+	add_child(m); _missles.append(m)
+	# Fire from the plane's own position (matches the lock-circle's source).
+	m.position = airplane.position + Vector3(40.0, 0.0, 0.0)
+	# Pick a target: prefer a locked one (YZ within OVERLAP_TOLERANCE), else
+	# the nearest forward target. Missile homes on whatever it gets.
+	m.target = _find_missle_target()
+
+
+func _find_missle_target() -> Node3D:
+	const LOCK_RADIUS := 18.0
+	var locked: Node3D = null
+	var locked_dist: float = INF
+	var nearest: Node3D = null
+	var nearest_x: float = INF
+	for t in _targets:
+		if t.position.x <= airplane.position.x:
+			continue
+		if t.position.x < nearest_x:
+			nearest_x = t.position.x
+			nearest = t
+		var dy: float = t.position.y - airplane.position.y
+		var dz: float = t.position.z - airplane.position.z
+		var d: float = sqrt(dy * dy + dz * dz)
+		if d < LOCK_RADIUS and d < locked_dist:
+			locked_dist = d
+			locked = t
+	return locked if locked != null else nearest
+
+
+func _fly_missles(dt_ms: float) -> void:
+	const HIT_RADIUS := 22.0
+	var to_remove: Array[int] = []
+	for i in _missles.size():
+		var m := _missles[i]
+		m.step(dt_ms)
+
+		var hit := false
+		# Target hit: swept segment-sphere check (missile moves in 3D now).
+		for j in _targets.size():
+			var t_pos: Vector3 = _targets[j].position
+			if _segment_point_distance(m.prev_position, m.position, t_pos) < HIT_RADIUS:
+				_spawn_particles_at(t_pos, 15, 1, 7)
+				_targets[j].queue_free()
+				_targets.remove_at(j)
+				hit = true
+				break
+
+		# Wall (building) hit: missile is inside an AABB.
+		if not hit:
+			for b in _buildings:
+				if absf(m.position.x - b.position.x) < b.w * 0.5 \
+				and absf(m.position.y - b.position.y) < b.h * 0.5 \
+				and absf(m.position.z - b.position.z) < b.d * 0.5:
+					_make_white_spheres(m.position)
+					hit = true
+					break
+
+		# Off-screen / underground.
+		if not hit and (m.position.x > 15000.0 or m.position.y < -1000.0):
+			hit = true
+
+		if hit:
+			to_remove.append(i)
+	_cleanup(to_remove, _missles)
+
+
+## Closest distance from point `p` to segment `a→b`.
+func _segment_point_distance(a: Vector3, b: Vector3, p: Vector3) -> float:
+	var ab: Vector3 = b - a
+	var len_sq: float = ab.length_squared()
+	if len_sq < 0.0001:
+		return a.distance_to(p)
+	var u: float = clampf((p - a).dot(ab) / len_sq, 0.0, 1.0)
+	return (a + ab * u).distance_to(p)
+
+
+# ----- Particles + white spheres --------------------------------------------
+
+func _spawn_particles_at(pos: Vector3, density: int, color: int, scale_: int) -> void:
+	for i in density:
+		var p: Node3D = ParticleScript.new()
+		p.color_index = color
+		p.sprite_scale = float(scale_)
+		p.inc_y = -1.0 + randf() * 2.0
+		p.inc_z = -1.0 + randf() * 2.0
+		p.inc_rx = randf() * 12.0
+		p.inc_rz = randf() * 12.0
+		p.duration = 0.3
+		add_child(p)
+		p.position = pos
+		_particles.append(p)
+
+
+func _make_white_spheres(pos: Vector3) -> void:
+	var n := 7 + int(randf() * 20.0)
+	for i in n:
+		var s: Node3D = WhiteSphereScript.new()
+		s.color = GameColors.BROWN_DARK if i % 5 == 0 else GameColors.PURE_WHITE
+		s.sphere_scale = 2.0 + randf() * 3.0
+		s.duration = 0.9
+		add_child(s)
+		s.position = pos + Vector3(
+			-15.0 + randf() * 25.0,
+			-15.0 + randf() * 25.0,
+			-15.0 + randf() * 25.0
+		)
+		_white_spheres.append(s)
+
+
+func _update_particles(dt_ms: float) -> void:
+	var to_remove: Array[int] = []
+	for i in _particles.size():
+		if not _particles[i].step(dt_ms):
+			to_remove.append(i)
+	_cleanup(to_remove, _particles)
+
+
+func _update_white_spheres(dt_ms: float) -> void:
+	var to_remove: Array[int] = []
+	for i in _white_spheres.size():
+		if not _white_spheres[i].step(dt_ms):
+			to_remove.append(i)
+	_cleanup(to_remove, _white_spheres)
+
+
+# ----- Helpers ---------------------------------------------------------------
+
+## Removes indices (sorted ascending) from `arr`, freeing the nodes.
+func _cleanup(indices: Array[int], arr: Array[Node3D]) -> void:
+	for k in range(indices.size() - 1, -1, -1):
+		var idx := indices[k]
+		var n := arr[idx]
+		n.queue_free()
+		arr.remove_at(idx)
+
+
+func _update_hud() -> void:
+	distance_label.text = "Distance: %d   Level: %d" % [int(GameConfig.distance), GameConfig.level]
+	energy_bar.value = GameConfig.energy
+	if GameConfig.status == GameConfig.STATUS_GAME_OVER:
+		status_label.text = "GAME OVER  —  press R to restart"
+	else:
+		status_label.text = ""
+
+
+# ----- Input -----------------------------------------------------------------
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("fire_missle"):
+		_fire_missle()
+	elif event.is_action_pressed("reset_game"):
+		get_tree().reload_current_scene()
+	elif event.is_action_pressed("quit_game"):
+		get_tree().quit()

@@ -1,0 +1,39 @@
+[gd_scene load_steps=2 format=3 uid="uid://115jun14vjho"]
+
+[ext_resource type="Script" path="res://scripts/Main.gd" id="1"]
+
+[node name="Main" type="Node3D"]
+script = ExtResource("1")
+
+[node name="Camera3D" type="Camera3D" parent="."]
+transform = Transform3D(0.793, 0, -0.609, -0.144, 0.972, -0.188, 0.592, 0.236, 0.771, 300, 200, 400)
+fov = 50.0
+near = 0.1
+far = 10000.0
+
+[node name="HUD" type="CanvasLayer" parent="."]
+
+[node name="Margin" type="MarginContainer" parent="HUD"]
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+offset_left = 16.0
+offset_top = 16.0
+offset_right = -16.0
+offset_bottom = -16.0
+grow_horizontal = 2
+grow_vertical = 2
+
+[node name="VBox" type="VBoxContainer" parent="HUD/Margin"]
+layout_mode = 2
+
+[node name="DistanceLabel" type="Label" parent="HUD/Margin/VBox"]
+layout_mode = 2
+text = "Distance: 0"
+
+[node name="EnergyBar" type="ProgressBar" parent="HUD/Margin/VBox"]
+layout_mode = 2
+value = 70.0
+
+[node name="StatusLabel" type="Label" parent="HUD/Margin/VBox"]
+layout_mode = 2

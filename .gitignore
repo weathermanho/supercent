@@ -1,0 +1,5 @@
+godot_project/.godot/
+godot_project/.import/
+*.tmp
+*.log
+eval/
