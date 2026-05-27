@@ -60,6 +60,10 @@ layout_mode = 2
 layout_mode = 2
 text = "Distance: 0"
 
+[node name="BestLabel" type="Label" parent="HUD/Margin/VBox"]
+layout_mode = 2
+text = "Best: 0"
+
 [node name="EnergyBar" type="ProgressBar" parent="HUD/Margin/VBox"]
 layout_mode = 2
 value = 70.0

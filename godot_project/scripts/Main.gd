@@ -25,6 +25,7 @@ const PLANE_BASE_X := -100.0
 @onready var hud: CanvasLayer = $HUD
 @onready var flash_overlay: ColorRect = $HUD/Flash
 @onready var distance_label: Label = $HUD/Margin/VBox/DistanceLabel
+@onready var best_label: Label = $HUD/Margin/VBox/BestLabel
 @onready var energy_bar: ProgressBar = $HUD/Margin/VBox/EnergyBar
 @onready var status_label: Label = $HUD/Margin/VBox/StatusLabel
 
@@ -114,6 +115,7 @@ func _tick_playing(dt_ms: float) -> void:
 	director.tick_weapon(dt_ms / 1000.0)
 	if GameConfig.energy < 1.0:
 		GameConfig.status = GameConfig.STATUS_GAME_OVER
+		_on_game_over()
 
 	GameConfig.base_speed += (GameConfig.target_base_speed - GameConfig.base_speed) * dt_ms * 0.02
 	GameConfig.speed = GameConfig.base_speed * GameConfig.plane_speed
@@ -482,10 +484,21 @@ func _cleanup(indices: Array[int], arr: Array[Node3D]) -> void:
 func _update_hud() -> void:
 	distance_label.text = "Distance: %d   Level: %d" % [int(GameConfig.distance), GameConfig.level]
 	energy_bar.value = GameConfig.energy
+	best_label.text = "Best: %d" % GameConfig.best_distance
 	if GameConfig.status == GameConfig.STATUS_GAME_OVER:
-		status_label.text = "GAME OVER  —  press R to restart"
+		var is_new_best: bool = int(GameConfig.distance) > GameConfig.best_distance
+		status_label.text = ("NEW BEST!  Press R to fly again" if is_new_best
+							 else "GAME OVER  —  Press R to fly again")
 	else:
 		status_label.text = ""
+
+
+func _on_game_over() -> void:
+	var traveled: int = int(GameConfig.distance)
+	if traveled > GameConfig.best_distance:
+		GameConfig.best_distance = traveled
+		var SaveDataScript := preload("res://scripts/SaveData.gd")
+		SaveDataScript.save_best(GameConfig.best_distance)
 
 
 # ----- Input -----------------------------------------------------------------

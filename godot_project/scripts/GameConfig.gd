@@ -141,3 +141,9 @@ static func remap_clamped(v: float, vmin: float, vmax: float, tmin: float, tmax:
 	var nv: float = clampf(v, vmin, vmax)
 	var pc: float = (nv - vmin) / (vmax - vmin)
 	return tmin + pc * (tmax - tmin)
+
+
+const SaveData := preload("res://scripts/SaveData.gd")
+
+func _ready() -> void:
+	best_distance = SaveData.load_best()
