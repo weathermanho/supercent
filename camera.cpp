@@ -1,0 +1,52 @@
+////////////////////////////////////////
+// camera.cpp
+////////////////////////////////////////
+
+#include "camera.h"
+
+////////////////////////////////////////////////////////////////////////////////
+
+Camera::Camera() {
+	Reset();
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void Camera::Update() {
+	// Ideally, this should read the mouse or keyboard and manipulate the camera
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+void Camera::Reset() {
+	//FOV=50.0f;
+	//Aspect=1.0f;
+	NearClip=.1f;
+	FarClip=10000.0f;
+
+	//Distance=5.0f;
+	//Azimuth=0.0f;
+	//Incline=0.0f;
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+
+void Camera::Draw() {
+	// Tell GL we are going to adjust the projection matrix
+	glMatrixMode(GL_PROJECTION);
+	glLoadIdentity();
+
+	// Set perspective projection
+	gluPerspective(FOV,Aspect,NearClip,FarClip);
+
+	// Place camera
+	glTranslatef(x,y,z);
+	glRotatef(Incline,1.0f,0.0f,0.0f);
+	glRotatef(Azimuth,0.0f,1.0f,0.0f);
+
+	// Return to modelview matrix mode
+	glMatrixMode(GL_MODELVIEW);
+}
+
+////////////////////////////////////////////////////////////////////////////////

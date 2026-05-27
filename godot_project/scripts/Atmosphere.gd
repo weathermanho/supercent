@@ -2,7 +2,7 @@ extends Node3D
 ## Owns the world look: gradient sky, sand-colored fog, sand ground plane,
 ## warm directional light. Replaces Main._setup_lighting().
 
-const SKY_TOP := Color8(118, 180, 180)         # teal
+const SKY_TOP := Color8(70, 170, 195)          # vivid teal — match reference image
 const SKY_HORIZON := Color8(228, 210, 170)     # sand horizon (matches ground)
 const GROUND_COLOR := Color8(232, 210, 165)
 const FOG_COLOR := Color8(232, 210, 165)
@@ -28,7 +28,7 @@ func _setup_environment() -> void:
 	psm.ground_horizon_color = SKY_HORIZON
 	psm.ground_bottom_color = GROUND_COLOR
 	psm.sun_angle_max = 30.0
-	psm.sun_curve = 0.15
+	psm.sun_curve = 0.25  # sharper horizon split — matches reference's strong cool/warm cut
 	sky.sky_material = psm
 	env.sky = sky
 	env.background_mode = Environment.BG_SKY

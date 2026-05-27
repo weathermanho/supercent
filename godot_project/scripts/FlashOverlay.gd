@@ -1,10 +1,10 @@
 extends ColorRect
-## Full-screen white flash. Call `flash(intensity, duration)`.
-## Sits in the HUD CanvasLayer and is initially fully transparent.
+## Full-screen flash. Call `flash(intensity, duration, warm)` to fire.
+## warm=true tints toward sun (1.0, 0.85, 0.55), warm=false uses near-white.
 
 var _t: float = 0.0
 var _duration: float = 0.06
-var _start_alpha: float = 0.0
+var _start_color: Color = Color(1.0, 0.85, 0.55, 0.0)
 
 
 func _ready() -> void:
@@ -14,11 +14,12 @@ func _ready() -> void:
 	offset_left = 0.0; offset_top = 0.0; offset_right = 0.0; offset_bottom = 0.0
 
 
-func flash(intensity: float, duration: float) -> void:
-	_start_alpha = clampf(intensity, 0.0, 1.0)
+func flash(intensity: float, duration: float, warm: bool = true) -> void:
+	var base := Color(1.0, 0.85, 0.55) if warm else Color(1.0, 1.0, 0.95)
+	_start_color = Color(base.r, base.g, base.b, clampf(intensity, 0.0, 1.0))
 	_duration = maxf(duration, 0.001)
 	_t = 0.0
-	color.a = _start_alpha
+	color = _start_color
 
 
 func _process(delta: float) -> void:
@@ -26,4 +27,5 @@ func _process(delta: float) -> void:
 		return
 	_t += delta
 	var p: float = clampf(_t / _duration, 0.0, 1.0)
-	color.a = lerpf(_start_alpha, 0.0, p)
+	color = Color(_start_color.r, _start_color.g, _start_color.b,
+				  lerpf(_start_color.a, 0.0, p))

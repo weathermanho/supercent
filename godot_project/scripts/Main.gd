@@ -62,6 +62,32 @@ func _ready() -> void:
 	camera.position = Vector3(-450.0, 200.0, 0.0)
 	camera.look_at(Vector3(1000.0, 100.0, 0.0), Vector3.UP)
 
+	# 0-3s ad hook: prime the corridor so frame 1 isn't an empty desert.
+	# Pre-spawn background ruins + one immediate building+target staggered along +X.
+	for k in 4:
+		_build_structures()
+	_prime_opening_corridor()
+
+
+func _prime_opening_corridor() -> void:
+	# Three building+target pairs at staggered x, so the camera sees a depth chain
+	# of "stuff coming" from frame 0.
+	var distances: Array[float] = [1200.0, 2200.0, 3400.0]
+	for x in distances:
+		var ww := 300.0 + randf() * 200.0
+		var wh := 110.0 + randf() * 40.0
+		var wd := 130.0
+		var wall := BuildingScene.instantiate()
+		add_child(wall); _buildings.append(wall)
+		wall.position = Vector3(x, randf() * 60.0 + wh * 0.5, -60.0 + randf() * 120.0)
+		wall.init_geometry(ww, wh, wd, GameColors.BROWN, 1)
+
+		var target := TargetScene.instantiate()
+		add_child(target)
+		target.position = Vector3(wall.position.x - ww * 0.5 - 30.0, wall.position.y, wall.position.z)
+		target.wall = wall
+		_targets.append(target)
+
 
 func _process(delta: float) -> void:
 	var dt_ms: float = delta * 1000.0 * GameConfig.time_scale
@@ -153,19 +179,19 @@ func _construct_building() -> void:
 	if director.consume_giant_due():
 		_construct_giant()
 		return
-	# Two big buildings on either side of the corridor.
+	# Two big buildings on either side of the corridor — desert-ruin browns.
 	var top := BuildingScene.instantiate()
 	add_child(top); _buildings.append(top)
 	top.position = Vector3(4000.0, 0.0, -200.0)
 	var top_h := 300.0 + randf() * 200.0
-	top.init_geometry(1200, top_h, 100, GameColors.BLUE, 0)
+	top.init_geometry(1200, top_h, 100, GameColors.BROWN, 0)
 	top.position.y = top_h * 0.5
 
 	var bot := BuildingScene.instantiate()
 	add_child(bot); _buildings.append(bot)
 	bot.position = Vector3(4000.0, 0.0, 200.0)
 	var bot_h := 300.0 + randf() * 200.0
-	bot.init_geometry(1200, bot_h, 100, GameColors.BLUE, 0)
+	bot.init_geometry(1200, bot_h, 100, GameColors.BROWN, 0)
 	bot.position.y = bot_h * 0.5
 
 	# A wall in the middle (transparent, type=1).
@@ -175,7 +201,7 @@ func _construct_building() -> void:
 	var wh := 90.0 + randf() * 70.0
 	var wd := 110.0 + randf() * 110.0
 	wall.position = Vector3(4000.0, randf() * 150.0 + wh * 0.5, -100.0 + randf() * 200.0)
-	wall.init_geometry(ww, wh, wd, GameColors.DARK_BLUE, 1)
+	wall.init_geometry(ww, wh, wd, GameColors.BROWN_DARK, 1)
 
 	# Target attached to the wall — a red icosahedron in front of it. The
 	# guide overlay uses `target.wall` to compute the forward-ray/wall-face
@@ -430,10 +456,10 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 		_make_white_spheres(g.position, false)
 		return
 
-	# Kill: full showpiece combo.
+	# Kill: full showpiece combo. Use bright (cooler) flash to read as climactic.
 	time_scaler.request_slowmo(GameConfig.slowmo_giant_scale, GameConfig.slowmo_giant_duration)
 	shaker.shake(GameConfig.shake_giant_intensity, GameConfig.shake_giant_duration)
-	flash_overlay.flash(0.4, 0.35)
+	flash_overlay.flash(0.5, 0.35, false)
 	_spawn_shockwave(g.position, 40.0, 0.8)
 	_make_white_spheres(g.position, true)
 	_spawn_particles_at(g.position, 80, 1, 12)

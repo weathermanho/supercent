@@ -1,14 +1,16 @@
 extends Node
 ## Attach as child of a Camera3D. Call `shake(intensity, duration)` to add
-## random offsets to the camera's translation each frame for `duration` seconds.
-## The base transform is read once on entry and restored on exit, so this does
-## not interfere with whatever positions the camera (Main.gd sets it once at boot).
+## random translation + small rotational kicks to the camera each frame for
+## `duration` seconds. The base transform is read once on entry and restored
+## on exit, so this does not interfere with whatever positions the camera.
 
 @export var trauma_decay: float = 4.0  # how fast intensity decays per second
+@export var rot_kick: float = 0.0015   # radians per unit of trauma
 
 var _camera: Camera3D
 var _base_position: Vector3
-var _trauma: float = 0.0   # current intensity (0..N)
+var _base_rotation: Vector3
+var _trauma: float = 0.0
 var _time_left: float = 0.0
 
 
@@ -16,6 +18,7 @@ func _ready() -> void:
 	_camera = get_parent() as Camera3D
 	assert(_camera != null, "CameraShaker must be a child of Camera3D")
 	_base_position = _camera.position
+	_base_rotation = _camera.rotation
 
 
 ## Public API. Call repeatedly — uses max of (current, new) so it doesn't stack.
@@ -28,6 +31,8 @@ func _process(delta: float) -> void:
 	if _time_left <= 0.0:
 		if _camera.position != _base_position:
 			_camera.position = _base_position
+		if _camera.rotation != _base_rotation:
+			_camera.rotation = _base_rotation
 		return
 
 	_time_left -= delta
@@ -37,4 +42,9 @@ func _process(delta: float) -> void:
 		(randf() * 2.0 - 1.0) * t,
 		(randf() * 2.0 - 1.0) * t,
 		(randf() * 2.0 - 1.0) * t,
+	)
+	_camera.rotation = _base_rotation + Vector3(
+		(randf() * 2.0 - 1.0) * t * rot_kick,
+		(randf() * 2.0 - 1.0) * t * rot_kick,
+		(randf() * 2.0 - 1.0) * t * rot_kick,
 	)

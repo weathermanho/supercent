@@ -97,13 +97,15 @@ var missile_boost_accel: float = 800.0        # weakened from 4500 -> 800 (less 
 var missile_max_speed: float = 2200.0
 var missile_drop_duration: float = 0.3
 var missile_scale_stage1: float = 0.4
-var missile_scale_stage2: float = 0.55
-var missile_scale_stage3: float = 0.7
-var missile_lock_radius: float = 8.0          # was 18, narrowed so player must aim
+var missile_scale_stage2: float = 0.8
+var missile_scale_stage3: float = 1.4
+var missile_lock_radius: float = 22.0         # generous so ad cuts show confident chained hits
 
-# Showpiece distances (m)
-var giant_distance_thresholds: Array[int] = [800, 1600, 2400]
-var weapon_upgrade_distances: Array[int] = [400, 1200]
+# Showpiece distances (m) — tuned for a 30-second ad cut at default scroll speed.
+# At init_speed=0.00035 the player reaches ~525 distance in 30s, so escalation
+# beats must fit inside that window.
+var giant_distance_thresholds: Array[int] = [120, 240, 380]
+var weapon_upgrade_distances: Array[int] = [60, 180]
 
 # Juice constants
 var shake_hit_intensity: float = 8.0
