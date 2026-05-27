@@ -241,34 +241,52 @@ func _move_structures(dt_ms: float) -> void:
 # ----- Missiles --------------------------------------------------------------
 
 func _fire_missle() -> void:
-	var m := MissleScene.instantiate()
+	_spawn_missle(0.0)  # single straight shot — multi-fan added in weapon_stage branch later
+
+
+func _spawn_missle(yaw_offset_deg: float) -> void:
+	var m: Node3D = MissleScene.instantiate()
 	add_child(m); _missles.append(m)
-	# Fire from the plane's own position (matches the lock-circle's source).
 	m.position = airplane.position + Vector3(40.0, 0.0, 0.0)
-	# Pick a target: prefer a locked one (YZ within OVERLAP_TOLERANCE), else
-	# the nearest forward target. Missile homes on whatever it gets.
+
+	# Set scale per current weapon stage.
+	match GameConfig.weapon_stage:
+		1: m.missile_scale = GameConfig.missile_scale_stage1
+		2: m.missile_scale = GameConfig.missile_scale_stage2
+		_: m.missile_scale = GameConfig.missile_scale_stage3
+
+	# Aim direction: from plane to current world cursor target.
+	var aim: Vector3 = Vector3.RIGHT
+	var to_cursor: Vector3 = _get_world_cursor() - m.position
+	if to_cursor.length_squared() > 1.0:
+		aim = to_cursor.normalized()
+	# Tilt by yaw_offset (rotate around Y).
+	if absf(yaw_offset_deg) > 0.01:
+		aim = aim.rotated(Vector3.UP, deg_to_rad(yaw_offset_deg))
+
+	# Inherit plane velocity (the "throw" feel).
+	var forward_speed: float = GameConfig.missile_initial_forward_speed
+	var drop_speed: float = GameConfig.missile_initial_drop_speed
+	m.velocity = aim * forward_speed + Vector3.DOWN * drop_speed + airplane.estimated_velocity
+
+	# Target: lock-on only — no nearest fallback (handoff §부록C "완전 유도 금지").
 	m.target = _find_missle_target()
 
 
 func _find_missle_target() -> Node3D:
-	const LOCK_RADIUS := 18.0
+	var lock_radius: float = GameConfig.missile_lock_radius
 	var locked: Node3D = null
 	var locked_dist: float = INF
-	var nearest: Node3D = null
-	var nearest_x: float = INF
 	for t in _targets:
 		if t.position.x <= airplane.position.x:
 			continue
-		if t.position.x < nearest_x:
-			nearest_x = t.position.x
-			nearest = t
 		var dy: float = t.position.y - airplane.position.y
 		var dz: float = t.position.z - airplane.position.z
 		var d: float = sqrt(dy * dy + dz * dz)
-		if d < LOCK_RADIUS and d < locked_dist:
+		if d < lock_radius and d < locked_dist:
 			locked_dist = d
 			locked = t
-	return locked if locked != null else nearest
+	return locked  # may be null — missile then flies straight (with gravity)
 
 
 func _fly_missles(dt_ms: float) -> void:

@@ -10,14 +10,8 @@ extends Node3D
 ##      is reoriented every frame so the nose always faces the velocity
 ##      vector — this is what reads as "guided / heat-seeking".
 
-const SCALE := 0.4
-
-const DROP_DURATION := 0.3            # seconds before the booster ignites
-const INITIAL_FORWARD_SPEED := 120.0  # +X velocity at launch
-const INITIAL_DROP_SPEED := 60.0      # downward velocity at launch
-const GRAVITY := 500.0                # during drop phase only
-const BOOST_ACCEL := 4500.0           # how aggressively velocity bends to target
-const MAX_SPEED := 2200.0             # capped flight speed after booster
+## Per-instance scale; set by Main before adding child. Default = stage 1.
+var missile_scale: float = 0.4
 
 var velocity: Vector3 = Vector3.ZERO
 var target: Node3D = null
@@ -48,7 +42,11 @@ func _ready() -> void:
 	wing2.rotation.x = PI / 2.0
 	add_child(wing2)
 
-	velocity = Vector3(INITIAL_FORWARD_SPEED, -INITIAL_DROP_SPEED, 0.0)
+	# Initial velocity is set by Main._fire_missle() *before* this scene is added,
+	# via `m.velocity = ...`. Just normalize the orientation here.
+	if velocity.length_squared() < 0.01:
+		velocity = Vector3(GameConfig.missile_initial_forward_speed,
+						   -GameConfig.missile_initial_drop_speed, 0.0)
 	prev_position = position
 	_orient_to_velocity()
 
@@ -58,18 +56,19 @@ func step(dt_ms: float) -> void:
 	var delta: float = dt_ms / 1000.0
 	time_alive += delta
 
-	if time_alive < DROP_DURATION:
-		# Drop phase — gravity only, no homing yet.
-		velocity.y -= GRAVITY * delta
+	if time_alive < GameConfig.missile_drop_duration:
+		# Drop phase — strong gravity, no homing yet.
+		velocity.y -= GameConfig.missile_drop_gravity * delta
 	else:
-		# Booster + homing.
+		# Boost + (weak) homing + mild gravity.
 		var desired_dir: Vector3
 		if target != null and is_instance_valid(target):
 			desired_dir = (target.position - position).normalized()
 		else:
-			desired_dir = Vector3.RIGHT  # fallback: keep flying forward
-		var desired_velocity: Vector3 = desired_dir * MAX_SPEED
-		velocity = velocity.move_toward(desired_velocity, BOOST_ACCEL * delta)
+			desired_dir = velocity.normalized() if velocity.length_squared() > 0.01 else Vector3.RIGHT
+		var desired_velocity: Vector3 = desired_dir * GameConfig.missile_max_speed
+		velocity = velocity.move_toward(desired_velocity, GameConfig.missile_boost_accel * delta)
+		velocity.y -= GameConfig.missile_boost_gravity * delta  # keep gravity in boost
 
 	position += velocity * delta
 	_orient_to_velocity()
@@ -87,4 +86,4 @@ func _orient_to_velocity() -> void:
 	side = side.normalized()
 	var up: Vector3 = forward.cross(side).normalized()
 	# Basis columns are X, Y, Z axes in world space. Local +X = forward.
-	transform.basis = Basis(forward, up, side).scaled(Vector3(SCALE, SCALE, SCALE))
+	transform.basis = Basis(forward, up, side).scaled(Vector3(missile_scale, missile_scale, missile_scale))
