@@ -307,7 +307,11 @@ func _fly_missles(dt_ms: float) -> void:
 		for j in _targets.size():
 			var t_pos: Vector3 = _targets[j].position
 			if _segment_point_distance(m.prev_position, m.position, t_pos) < HIT_RADIUS:
-				_spawn_particles_at(t_pos, 15, 1, 7)
+				_spawn_particles_at(t_pos, 30, 1, 8)
+				_spawn_shockwave(t_pos, 8.0, 0.4)
+				shaker.shake(GameConfig.shake_hit_intensity, GameConfig.shake_hit_duration)
+				time_scaler.request_hitstop(GameConfig.hitstop_duration)
+				flash_overlay.flash(0.15, 0.06)
 				_targets[j].queue_free()
 				_targets.remove_at(j)
 				hit = true
@@ -319,7 +323,11 @@ func _fly_missles(dt_ms: float) -> void:
 				if absf(m.position.x - b.position.x) < b.w * 0.5 \
 				and absf(m.position.y - b.position.y) < b.h * 0.5 \
 				and absf(m.position.z - b.position.z) < b.d * 0.5:
-					_make_white_spheres(m.position)
+					_make_white_spheres(m.position, false)
+					_spawn_shockwave(m.position, 10.0, 0.45)
+					shaker.shake(GameConfig.shake_hit_intensity * 1.4, GameConfig.shake_hit_duration * 1.2)
+					time_scaler.request_hitstop(GameConfig.hitstop_duration)
+					flash_overlay.flash(0.15, 0.08)
 					hit = true
 					break
 
@@ -349,28 +357,31 @@ func _spawn_particles_at(pos: Vector3, density: int, color: int, scale_: int) ->
 		var p: Node3D = ParticleScript.new()
 		p.color_index = color
 		p.sprite_scale = float(scale_)
-		p.inc_y = -1.0 + randf() * 2.0
-		p.inc_z = -1.0 + randf() * 2.0
-		p.inc_rx = randf() * 12.0
-		p.inc_rz = randf() * 12.0
-		p.duration = 0.3
+		p.inc_y = -2.0 + randf() * 4.0
+		p.inc_z = -2.0 + randf() * 4.0
+		p.inc_rx = randf() * 18.0
+		p.inc_rz = randf() * 18.0
+		p.duration = 0.5
 		add_child(p)
 		p.position = pos
 		_particles.append(p)
 
 
-func _make_white_spheres(pos: Vector3) -> void:
-	var n := 7 + int(randf() * 20.0)
+func _make_white_spheres(pos: Vector3, big: bool = false) -> void:
+	var n: int = (80 + int(randf() * 40.0)) if big else (20 + int(randf() * 30.0))
 	for i in n:
 		var s: Node3D = WhiteSphereScript.new()
 		s.color = GameColors.BROWN_DARK if i % 5 == 0 else GameColors.PURE_WHITE
-		s.sphere_scale = 2.0 + randf() * 3.0
-		s.duration = 0.9
+		var max_scale: float = 18.0 if big else 8.0
+		var min_scale: float = 10.0 if big else 3.0
+		s.sphere_scale = min_scale + randf() * (max_scale - min_scale)
+		s.duration = 1.4 if big else 0.9
 		add_child(s)
+		var spread: float = 35.0 if big else 18.0
 		s.position = pos + Vector3(
-			-15.0 + randf() * 25.0,
-			-15.0 + randf() * 25.0,
-			-15.0 + randf() * 25.0
+			-spread + randf() * spread * 2.0,
+			-spread + randf() * spread * 2.0,
+			-spread + randf() * spread * 2.0
 		)
 		_white_spheres.append(s)
 
