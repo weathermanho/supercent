@@ -329,25 +329,15 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 		2: m.missile_scale = GameConfig.missile_scale_stage2
 		_: m.missile_scale = GameConfig.missile_scale_stage3
 
-	# Aim FORWARD (+X) toward the locked target — targets are ahead of the
-	# plane, so the missile visibly flies at what it tracks. Without a lock it
-	# flies straight forward (NOT toward the cursor, which sits on the plane's
-	# own depth plane and would send the shot backwards like a waterfall).
+	# Two-phase launch: EJECT the missile downward (+ a gentle forward push) so it
+	# visibly drops below the plane first; the booster (Missle.step) then ignites
+	# and homes onto the locked target. We do NOT aim at the target on launch —
+	# the drop comes first. Fan spread (yaw) is applied to the forward push.
 	var tgt: Node3D = _find_missle_target()
-	var aim: Vector3 = Vector3.RIGHT
-	if tgt != null:
-		var to_t: Vector3 = tgt.position - m.position
-		if to_t.length_squared() > 1.0:
-			aim = to_t.normalized()
-	# Tilt by yaw_offset (fan spread, rotate around Y).
-	if absf(yaw_offset_deg) > 0.01:
-		aim = aim.rotated(Vector3.UP, deg_to_rad(yaw_offset_deg))
-
-	# Mostly aim-driven; only a hint of inherited plane velocity so a locked shot
-	# goes at the target instead of veering off in the plane's heading.
-	var forward_speed: float = GameConfig.missile_initial_forward_speed
-	var drop_speed: float = GameConfig.missile_initial_drop_speed
-	m.velocity = aim * forward_speed + Vector3.DOWN * drop_speed + airplane.estimated_velocity * 0.15
+	var fwd: Vector3 = Vector3.RIGHT.rotated(Vector3.UP, deg_to_rad(yaw_offset_deg))
+	m.velocity = fwd * GameConfig.missile_initial_forward_speed \
+		+ Vector3.DOWN * GameConfig.missile_initial_drop_speed \
+		+ airplane.estimated_velocity * 0.15
 	m.target = tgt
 
 
