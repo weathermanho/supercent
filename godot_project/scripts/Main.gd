@@ -111,7 +111,8 @@ func _process(delta: float) -> void:
 	_update_shockwaves(dt_ms)
 
 	_update_camera()
-	_guide_overlay.update_overlay(airplane.position, _targets)
+	var cand: Node3D = _pick_candidate()
+	_guide_overlay.update_overlay(airplane.position, cand, _is_locked(cand))
 	_update_hud()
 
 
@@ -349,25 +350,42 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 	m.target = tgt
 
 
-func _find_missle_target() -> Node3D:
-	var locked: Node3D = null
-	var locked_dist: float = INF
+## The target the player is "pointing at": the nearest one ahead (giants only
+## once they've loomed into the hero zone). May be off-axis — used to draw the
+## aim reticle so the player always sees what's coming and can line up on it.
+func _pick_candidate() -> Node3D:
+	var best: Node3D = null
+	var best_x: float = INF
 	for t in _targets:
 		if t.position.x <= airplane.position.x:
 			continue
-		# Hold fire on a giant until it has loomed into the hero zone.
 		if t.is_giant and t.position.x > GIANT_VULNERABLE_X:
 			continue
-		# Giants are big looming bosses — lock from much farther so the climax
-		# volley always acquires them; normal targets keep the tight lock.
-		var lock_radius: float = GameConfig.missile_lock_radius * (14.0 if t.is_giant else 1.0)
-		var dy: float = t.position.y - airplane.position.y
-		var dz: float = t.position.z - airplane.position.z
-		var d: float = sqrt(dy * dy + dz * dz)
-		if d < lock_radius and d < locked_dist:
-			locked_dist = d
-			locked = t
-	return locked  # may be null — missile then flies straight (with gravity)
+		if t.position.x < best_x:
+			best_x = t.position.x
+			best = t
+	return best
+
+
+## y/z tolerance within which the candidate is locked. Giants are big looming
+## bosses, so they lock from much farther; normal targets need tighter aim.
+func _lock_window(t: Node3D) -> float:
+	return GameConfig.missile_lock_radius * (14.0 if t.is_giant else 1.0)
+
+
+func _is_locked(t: Node3D) -> bool:
+	if t == null or not is_instance_valid(t):
+		return false
+	var dy: float = t.position.y - airplane.position.y
+	var dz: float = t.position.z - airplane.position.z
+	return sqrt(dy * dy + dz * dz) < _lock_window(t)
+
+
+## What a fired missile homes onto: the candidate, but only once it's locked.
+## When null the missile flies straight forward (it does not nose-dive).
+func _find_missle_target() -> Node3D:
+	var c: Node3D = _pick_candidate()
+	return c if _is_locked(c) else null
 
 
 func _fly_missles(dt_ms: float) -> void:

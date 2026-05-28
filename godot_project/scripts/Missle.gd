@@ -71,14 +71,16 @@ func step(dt_ms: float) -> void:
 		if locked_giant:
 			accel = 3200.0
 			grav = 0.0
-		var desired_dir: Vector3
 		if target != null and is_instance_valid(target):
-			desired_dir = (target.position - position).normalized()
+			var desired_dir: Vector3 = (target.position - position).normalized()
+			velocity = velocity.move_toward(desired_dir * GameConfig.missile_max_speed, accel * delta)
+			velocity.y -= grav * delta
 		else:
-			desired_dir = velocity.normalized() if velocity.length_squared() > 0.01 else Vector3.RIGHT
-		var desired_velocity: Vector3 = desired_dir * GameConfig.missile_max_speed
-		velocity = velocity.move_toward(desired_velocity, accel * delta)
-		velocity.y -= grav * delta
+			# No lock: streak straight forward and LEVEL OUT (no gravity) so the
+			# shot reads as "fired ahead" instead of nose-diving into the sand.
+			var flat: Vector3 = Vector3(absf(velocity.x) + 1.0, 0.0, velocity.z)
+			velocity = velocity.move_toward(flat.normalized() * GameConfig.missile_max_speed,
+											GameConfig.missile_boost_accel * delta)
 
 	position += velocity * delta
 	_orient_to_velocity()

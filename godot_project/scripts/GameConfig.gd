@@ -99,7 +99,7 @@ var missile_drop_duration: float = 0.18       # shorter ejection before the boos
 var missile_scale_stage1: float = 0.4
 var missile_scale_stage2: float = 0.8
 var missile_scale_stage3: float = 1.4
-var missile_lock_radius: float = 22.0         # generous so ad cuts show confident chained hits
+var missile_lock_radius: float = 40.0         # forgiving lock so the player can actually acquire targets
 
 # Showpiece distances (m) — tuned for a 30-second ad cut at default scroll speed.
 # At init_speed=0.00035 the player reaches ~525 distance in 30s, so escalation
