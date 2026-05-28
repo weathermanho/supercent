@@ -37,12 +37,16 @@ func _setup_environment() -> void:
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
 	env.ambient_light_energy = 0.6
 
-	# Fog — depth-based haze.
+	# Fog — depth-based haze on the GROUND only. fog_sky_affect defaults to 1.0
+	# in Godot 4, which tints the whole sky to the sand fog color and erases the
+	# teal — set it to 0 so the sky keeps its vivid cool gradient and fog only
+	# softens distant ground geometry.
 	env.fog_enabled = true
 	env.fog_light_color = FOG_COLOR
-	env.fog_density = 0.0008
-	env.fog_depth_begin = 1500.0
-	env.fog_depth_end = 6000.0
+	env.fog_sky_affect = 0.0
+	env.fog_density = 0.0006
+	env.fog_depth_begin = 2200.0
+	env.fog_depth_end = 7000.0
 
 	# Tonemap for warmer look.
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
