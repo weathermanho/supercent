@@ -6,9 +6,9 @@ const STATUS_GAME_OVER := 0
 const STATUS_PLAYING := 1
 
 var speed: float = 0.0
-var init_speed: float = 0.00035
-var base_speed: float = 0.00035
-var target_base_speed: float = 0.00035
+var init_speed: float = 0.00028        # calmer pace (was 0.00035) — easier to aim
+var base_speed: float = 0.00028
+var target_base_speed: float = 0.00028
 var increment_speed_by_time: float = 0.0
 var increment_speed_by_level: float = 0.000003
 var distance_for_speed_update: int = 100
@@ -96,9 +96,9 @@ var missile_boost_gravity: float = 60.0       # gravity also during boost phase 
 var missile_boost_accel: float = 1100.0       # homing strength for normal targets (was 800)
 var missile_max_speed: float = 2200.0
 var missile_drop_duration: float = 0.18       # shorter ejection before the booster (was 0.3)
-var missile_scale_stage1: float = 0.4
-var missile_scale_stage2: float = 0.8
-var missile_scale_stage3: float = 1.4
+var missile_scale_stage1: float = 0.22
+var missile_scale_stage2: float = 0.38
+var missile_scale_stage3: float = 0.6
 var missile_lock_radius: float = 40.0         # forgiving lock so the player can actually acquire targets
 
 # Showpiece distances (m) — tuned for a 30-second ad cut at default scroll speed.

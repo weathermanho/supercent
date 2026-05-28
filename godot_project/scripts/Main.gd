@@ -343,10 +343,11 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 	if absf(yaw_offset_deg) > 0.01:
 		aim = aim.rotated(Vector3.UP, deg_to_rad(yaw_offset_deg))
 
-	# Inherit plane velocity (the "throw" feel).
+	# Mostly aim-driven; only a hint of inherited plane velocity so a locked shot
+	# goes at the target instead of veering off in the plane's heading.
 	var forward_speed: float = GameConfig.missile_initial_forward_speed
 	var drop_speed: float = GameConfig.missile_initial_drop_speed
-	m.velocity = aim * forward_speed + Vector3.DOWN * drop_speed + airplane.estimated_velocity
+	m.velocity = aim * forward_speed + Vector3.DOWN * drop_speed + airplane.estimated_velocity * 0.15
 	m.target = tgt
 
 
