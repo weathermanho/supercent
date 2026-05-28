@@ -6,9 +6,9 @@ const STATUS_GAME_OVER := 0
 const STATUS_PLAYING := 1
 
 var speed: float = 0.0
-var init_speed: float = 0.00028        # calmer pace (was 0.00035) — easier to aim
-var base_speed: float = 0.00028
-var target_base_speed: float = 0.00028
+var init_speed: float = 0.00022        # calmer pace (was 0.00035) — easier to aim
+var base_speed: float = 0.00022
+var target_base_speed: float = 0.00022
 var increment_speed_by_time: float = 0.0
 var increment_speed_by_level: float = 0.000003
 var distance_for_speed_update: int = 100
@@ -28,7 +28,7 @@ var plane_default_height: float = 100.0
 var plane_amp_height: float = 100.0
 var plane_low_height: float = 80.0
 var plane_amp_width: float = 75.0
-var plane_move_sensitivity: float = 0.005
+var plane_move_sensitivity: float = 0.0038
 var plane_rot_x_sensitivity: float = 0.0008
 var plane_rot_z_sensitivity: float = 0.0004
 var plane_fall_speed: float = 0.001
@@ -99,13 +99,13 @@ var missile_drop_duration: float = 0.18       # shorter ejection before the boos
 var missile_scale_stage1: float = 0.22
 var missile_scale_stage2: float = 0.38
 var missile_scale_stage3: float = 0.6
-var missile_lock_radius: float = 40.0         # forgiving lock so the player can actually acquire targets
+var missile_lock_radius: float = 120.0        # generous: lock without putting the plane ON the target (which would occlude it)
 
 # Showpiece distances (m) — tuned for a 30-second ad cut at default scroll speed.
 # At init_speed=0.00035 the player reaches ~525 distance in 30s, so escalation
 # beats must fit inside that window.
-var giant_distance_thresholds: Array[int] = [120, 240, 380]
-var weapon_upgrade_distances: Array[int] = [60, 180]
+var giant_distance_thresholds: Array[int] = [80, 160, 250]
+var weapon_upgrade_distances: Array[int] = [40, 120]
 
 # Juice constants
 var shake_hit_intensity: float = 8.0
