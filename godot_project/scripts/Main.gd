@@ -59,12 +59,10 @@ func _ready() -> void:
 	_guide_overlay = GuideOverlayScript.new()
 	add_child(_guide_overlay)
 
-	# Position the camera *behind* the plane (more negative X) and slightly
-	# above, looking forward along +X — the direction enemies/buildings come
-	# from. This makes objects fly out of the screen toward the viewer.
-	# Lighting is now owned by the Atmosphere node.
-	camera.position = Vector3(-450.0, 200.0, 0.0)
-	camera.look_at(Vector3(1000.0, 100.0, 0.0), Vector3.UP)
+	# Chase camera (see _update_camera): sits just behind + slightly above the
+	# plane, looking forward along +X so the plane's tail is in frame and the
+	# action approaches from ahead. Lighting is owned by the Atmosphere node.
+	_update_camera()
 
 	# 0-3s ad hook: prime the corridor so frame 1 isn't an empty desert.
 	# Pre-spawn background ruins + one immediate building+target staggered along +X.
@@ -112,6 +110,7 @@ func _process(delta: float) -> void:
 	_update_particles(dt_ms)
 	_update_shockwaves(dt_ms)
 
+	_update_camera()
 	_guide_overlay.update_overlay(airplane.position, _targets)
 	_update_hud()
 
@@ -156,6 +155,20 @@ func _tick_falling() -> void:
 	for p in _particles:
 		p.queue_free()
 	_particles.clear()
+
+
+## Chase cam: stand a fixed distance behind (-X) and above the plane, follow it
+## laterally (z) so it never steers out of frame, and partly vertically (y) to
+## keep it framed without bobbing the whole world. Looks forward along +X. The
+## shaker's rest pose is refreshed to this transform each frame so screen-shake
+## offsets ride on top of the moving rig instead of fighting it.
+func _update_camera() -> void:
+	var p: Vector3 = airplane.position
+	var cam_y: float = GameConfig.plane_default_height \
+		+ (p.y - GameConfig.plane_default_height) * 0.6 + 55.0
+	camera.position = Vector3(PLANE_BASE_X - 230.0, cam_y, p.z)
+	camera.look_at(Vector3(PLANE_BASE_X + 1400.0, p.y - 10.0, p.z), Vector3.UP)
+	shaker.refresh_base()
 
 
 func _get_normalized_mouse() -> Vector2:

@@ -21,6 +21,13 @@ func _ready() -> void:
 	_base_rotation = _camera.rotation
 
 
+## Re-capture the rest position. Call after repositioning the camera (the base
+## is first read in _ready, which runs before a parent overrides the transform).
+func refresh_base() -> void:
+	_base_position = _camera.position
+	_base_rotation = _camera.rotation
+
+
 ## Public API. Call repeatedly — uses max of (current, new) so it doesn't stack.
 func shake(intensity: float, duration: float) -> void:
 	_trauma = maxf(_trauma, intensity)
