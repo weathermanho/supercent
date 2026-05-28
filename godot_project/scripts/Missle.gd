@@ -57,24 +57,19 @@ func step(dt_ms: float) -> void:
 	time_alive += delta
 
 	if time_alive < GameConfig.missile_drop_duration:
-		# Drop phase — strong gravity, no homing yet.
+		# Phase 1 — free-fall straight down (gravity only, no homing yet).
 		velocity.y -= GameConfig.missile_drop_gravity * delta
 	else:
-		# A missile only HAS a target when the player fired while locked (red
-		# reticle). In that case it home HARD and ignores gravity, so a locked
-		# shot reliably curves onto the target instead of flying off in the
-		# plane's heading. Giants get the strongest pull.
+		# Phase 2 — booster: point STRAIGHT at the target (or straight forward
+		# with no lock) and fly in a straight line. We set the direction directly
+		# (not move_toward) so there's a clean drop -> straight-line corner
+		# instead of a smooth elliptical arc between the two phases.
+		var dir: Vector3 = Vector3.RIGHT
 		if target != null and is_instance_valid(target):
-			var is_giant: bool = ("is_giant" in target and target.is_giant)
-			var accel: float = 3600.0 if is_giant else 2800.0
-			var desired_dir: Vector3 = (target.position - position).normalized()
-			velocity = velocity.move_toward(desired_dir * GameConfig.missile_max_speed, accel * delta)
-		else:
-			# No lock: streak straight forward and LEVEL OUT (no gravity) so the
-			# shot reads as "fired ahead" instead of nose-diving into the sand.
-			var flat: Vector3 = Vector3(absf(velocity.x) + 1.0, 0.0, velocity.z)
-			velocity = velocity.move_toward(flat.normalized() * GameConfig.missile_max_speed,
-											GameConfig.missile_boost_accel * delta)
+			dir = (target.position - position).normalized()
+		var spd: float = maxf(velocity.length(), 320.0)
+		spd = minf(spd + 3000.0 * delta, GameConfig.missile_max_speed)
+		velocity = dir * spd
 
 	position += velocity * delta
 	_orient_to_velocity()
