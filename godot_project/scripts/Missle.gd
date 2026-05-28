@@ -48,7 +48,7 @@ func _ready() -> void:
 		velocity = Vector3(GameConfig.missile_initial_forward_speed,
 						   -GameConfig.missile_initial_drop_speed, 0.0)
 	prev_position = position
-	_orient_to_velocity()
+	_orient_to_dir(Vector3.RIGHT)  # start nose-forward; it free-falls flat
 
 
 func step(dt_ms: float) -> void:
@@ -57,8 +57,12 @@ func step(dt_ms: float) -> void:
 	time_alive += delta
 
 	if time_alive < GameConfig.missile_drop_duration:
-		# Phase 1 — free-fall straight down (gravity only, no homing yet).
+		# Phase 1 — free-fall straight down (gravity only). The NOSE stays facing
+		# forward (+X) the whole time: the missile drops flat out of the bay, it
+		# does not pitch nose-down to follow the fall.
 		velocity.y -= GameConfig.missile_drop_gravity * delta
+		position += velocity * delta
+		_orient_to_dir(Vector3.RIGHT)
 	else:
 		# Phase 2 — booster: point STRAIGHT at the target (or straight forward
 		# with no lock) and fly in a straight line. We set the direction directly
@@ -70,16 +74,15 @@ func step(dt_ms: float) -> void:
 		var spd: float = maxf(velocity.length(), 320.0)
 		spd = minf(spd + 3000.0 * delta, GameConfig.missile_max_speed)
 		velocity = dir * spd
+		position += velocity * delta
+		_orient_to_dir(velocity)
 
-	position += velocity * delta
-	_orient_to_velocity()
 
-
-## Reorients the mesh so its nose (local +X) points along the velocity vector.
-func _orient_to_velocity() -> void:
-	if velocity.length_squared() < 0.01:
+## Reorients the mesh so its nose (local +X) points along `dir`.
+func _orient_to_dir(dir: Vector3) -> void:
+	if dir.length_squared() < 0.01:
 		return
-	var forward: Vector3 = velocity.normalized()
+	var forward: Vector3 = dir.normalized()
 	var world_up := Vector3.UP
 	var side: Vector3 = world_up.cross(forward)
 	if side.length_squared() < 0.0001:
