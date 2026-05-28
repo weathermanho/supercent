@@ -17,6 +17,10 @@ const ShockwaveRingScript := preload("res://scripts/ShockwaveRing.gd")
 
 const STEP_TIME := 0.01
 const PLANE_BASE_X := -100.0
+## A giant only becomes lockable / hittable once it has loomed in to this x, so
+## the climax kill lands in the mid-frame "hero zone" (big, centered, juice
+## on-screen) rather than as a tiny pop on the horizon or below the camera.
+const GIANT_VULNERABLE_X := 950.0
 
 @onready var camera: Camera3D = $Camera3D
 @onready var shaker: Node = $Camera3D/Shaker
@@ -179,20 +183,23 @@ func _construct_building() -> void:
 	if director.consume_giant_due():
 		_construct_giant()
 		return
-	# Two big buildings on either side of the corridor — desert-ruin browns.
+	# Low desert-ruin blocks flanking the path. Kept SHORT (so the teal sky and
+	# the giant silhouette stay visible above them) and pushed well out in z (so
+	# they frame the corridor instead of engulfing the camera as tan walls), with
+	# varied length so gaps reveal the open desert behind.
 	var top := BuildingScene.instantiate()
 	add_child(top); _buildings.append(top)
-	top.position = Vector3(4000.0, 0.0, -200.0)
-	var top_h := 300.0 + randf() * 200.0
-	top.init_geometry(1200, top_h, 100, GameColors.BROWN, 0)
-	top.position.y = top_h * 0.5
+	var top_len := 350.0 + randf() * 300.0
+	var top_h := 90.0 + randf() * 70.0
+	top.position = Vector3(4000.0, top_h * 0.5, -340.0 - randf() * 120.0)
+	top.init_geometry(top_len, top_h, 90, GameColors.BROWN, 0)
 
 	var bot := BuildingScene.instantiate()
 	add_child(bot); _buildings.append(bot)
-	bot.position = Vector3(4000.0, 0.0, 200.0)
-	var bot_h := 300.0 + randf() * 200.0
-	bot.init_geometry(1200, bot_h, 100, GameColors.BROWN, 0)
-	bot.position.y = bot_h * 0.5
+	var bot_len := 350.0 + randf() * 300.0
+	var bot_h := 90.0 + randf() * 70.0
+	bot.position = Vector3(4000.0, bot_h * 0.5, 340.0 + randf() * 120.0)
+	bot.init_geometry(bot_len, bot_h, 90, GameColors.BROWN, 0)
 
 	# A wall in the middle (transparent, type=1).
 	var wall := BuildingScene.instantiate()
@@ -218,7 +225,7 @@ func _construct_giant() -> void:
 	var giant := TargetScene.instantiate()
 	giant.is_giant = true
 	add_child(giant)
-	giant.position = Vector3(4000.0, 150.0, 0.0)
+	giant.position = Vector3(2200.0, 125.0, 0.0)
 	giant.wall = null
 	_targets.append(giant)
 
@@ -259,11 +266,14 @@ func _move_buildings(dt_ms: float) -> void:
 			to_remove.append(i)
 	_cleanup(to_remove, _buildings)
 
-	# Targets scroll along with their walls.
+	# Targets scroll along with their walls. Giants scroll slower so they loom in
+	# the mid-frame "hero zone" long enough to be destroyed on-screen (otherwise
+	# they reach the camera and the kill juice fires below the visible frame).
 	var to_remove_targets: Array[int] = []
 	var scroll: float = GameConfig.speed * dt_ms * GameConfig.ennemies_speed * 5000.0
 	for i in _targets.size():
-		_targets[i].position.x -= scroll
+		var f: float = 0.6 if _targets[i].is_giant else 1.0
+		_targets[i].position.x -= scroll * f
 		if _targets[i].position.x <= -1000.0:
 			to_remove_targets.append(i)
 	_cleanup(to_remove_targets, _targets)
@@ -324,12 +334,17 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 
 
 func _find_missle_target() -> Node3D:
-	var lock_radius: float = GameConfig.missile_lock_radius
 	var locked: Node3D = null
 	var locked_dist: float = INF
 	for t in _targets:
 		if t.position.x <= airplane.position.x:
 			continue
+		# Hold fire on a giant until it has loomed into the hero zone.
+		if t.is_giant and t.position.x > GIANT_VULNERABLE_X:
+			continue
+		# Giants are big looming bosses — lock from much farther so the climax
+		# volley always acquires them; normal targets keep the tight lock.
+		var lock_radius: float = GameConfig.missile_lock_radius * (14.0 if t.is_giant else 1.0)
 		var dy: float = t.position.y - airplane.position.y
 		var dz: float = t.position.z - airplane.position.z
 		var d: float = sqrt(dy * dy + dz * dz)
@@ -350,6 +365,8 @@ func _fly_missles(dt_ms: float) -> void:
 		# Target hit: swept segment-sphere check (missile moves in 3D now).
 		for j in _targets.size():
 			var t_pos: Vector3 = _targets[j].position
+			if _targets[j].is_giant and t_pos.x > GIANT_VULNERABLE_X:
+				continue
 			if _segment_point_distance(m.prev_position, m.position, t_pos) < (HIT_RADIUS * (8.0 if _targets[j].is_giant else 1.0)):
 				# Capture flag BEFORE _on_giant_hit mutates _targets.
 				var is_g: bool = _targets[j].is_giant

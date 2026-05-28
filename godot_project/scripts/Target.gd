@@ -38,13 +38,19 @@ func _build_normal() -> void:
 
 
 func _build_giant() -> void:
-	# Base orb — large brown sphere.
+	# Sized so the composite reads as a distinct boss silhouette against the
+	# teal sky rather than engulfing the camera. Colored near-black so it reads
+	# as a dark silhouette (the reference's giant is a dark shape against a
+	# bright cool sky), with a red emissive accent that pops as the "lock here".
+	const R := 70.0
+
+	# Base orb.
 	var orb := SphereMesh.new()
-	orb.radius = 110.0
-	orb.height = 220.0
-	orb.radial_segments = 24
-	orb.rings = 16
-	var orb_mat := _make_mat(GameColors.BROWN, 0.95)
+	orb.radius = R
+	orb.height = R * 2.0
+	orb.radial_segments = 32
+	orb.rings = 20
+	var orb_mat := _make_mat(GameColors.BROWN_DARK, 0.85)
 	var orb_mi := MeshInstance3D.new()
 	orb_mi.mesh = orb
 	orb_mi.set_surface_override_material(0, orb_mat)
@@ -52,29 +58,33 @@ func _build_giant() -> void:
 	_parts.append(orb_mi)
 	_mats.append(orb_mat)
 
-	# Body — taller dark column on top of the orb (the "rider" silhouette).
-	var body_mi: MeshInstance3D = BoxFactory.make_box(60, 90, 50, GameColors.BROWN_DARK)
-	body_mi.position = Vector3(0.0, 110.0 + 45.0, 0.0)
+	# Body — column on top of the orb (the "rider" silhouette).
+	var body_mi: MeshInstance3D = BoxFactory.make_box(40, 60, 34, GameColors.BROWN_DARK)
+	body_mi.position = Vector3(0.0, R + 30.0, 0.0)
 	add_child(body_mi)
 	_parts.append(body_mi)
 	var body_mat := _wrap_first_material(body_mi, GameColors.BROWN_DARK)
 	if body_mat: _mats.append(body_mat)
 
-	# Head — smaller dark cube.
-	var head_mi: MeshInstance3D = BoxFactory.make_box(35, 35, 30, GameColors.BROWN_DARK)
-	head_mi.position = Vector3(0.0, 110.0 + 90.0 + 18.0, 0.0)
+	# Head.
+	var head_mi: MeshInstance3D = BoxFactory.make_box(24, 24, 20, GameColors.BROWN_DARK)
+	head_mi.position = Vector3(0.0, R + 60.0 + 12.0, 0.0)
 	add_child(head_mi)
 	_parts.append(head_mi)
 	var head_mat := _wrap_first_material(head_mi, GameColors.BROWN_DARK)
 	if head_mat: _mats.append(head_mat)
 
-	# Red cap — small silhouette accent on top (the "pennant" / lock indicator).
-	var cap_mi: MeshInstance3D = BoxFactory.make_box(8, 50, 6, GameColors.RED)
-	cap_mi.position = Vector3(0.0, 110.0 + 90.0 + 36.0 + 25.0, 0.0)
+	# Red cap — emissive accent / lock indicator.
+	var cap_mi: MeshInstance3D = BoxFactory.make_box(6, 34, 5, GameColors.RED)
+	cap_mi.position = Vector3(0.0, R + 60.0 + 24.0 + 17.0, 0.0)
 	add_child(cap_mi)
 	_parts.append(cap_mi)
 	var cap_mat := _wrap_first_material(cap_mi, GameColors.RED)
-	if cap_mat: _mats.append(cap_mat)
+	if cap_mat:
+		cap_mat.emission_enabled = true
+		cap_mat.emission = GameColors.RED
+		cap_mat.emission_energy_multiplier = 2.5
+		_mats.append(cap_mat)
 
 
 func _make_mat(c: Color, rough: float) -> StandardMaterial3D:

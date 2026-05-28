@@ -60,15 +60,25 @@ func step(dt_ms: float) -> void:
 		# Drop phase — strong gravity, no homing yet.
 		velocity.y -= GameConfig.missile_drop_gravity * delta
 	else:
-		# Boost + (weak) homing + mild gravity.
+		# Boost + (weak) homing + mild gravity. A giant is a big, slow, looming
+		# boss: missiles locked onto it home HARD (and ignore gravity) so the
+		# climax kill reliably lands while it's still in the hero zone, instead
+		# of arcing into the sand short of it. Normal targets keep weak homing.
+		var accel: float = GameConfig.missile_boost_accel
+		var grav: float = GameConfig.missile_boost_gravity
+		var locked_giant: bool = (target != null and is_instance_valid(target)
+								  and "is_giant" in target and target.is_giant)
+		if locked_giant:
+			accel = 3200.0
+			grav = 0.0
 		var desired_dir: Vector3
 		if target != null and is_instance_valid(target):
 			desired_dir = (target.position - position).normalized()
 		else:
 			desired_dir = velocity.normalized() if velocity.length_squared() > 0.01 else Vector3.RIGHT
 		var desired_velocity: Vector3 = desired_dir * GameConfig.missile_max_speed
-		velocity = velocity.move_toward(desired_velocity, GameConfig.missile_boost_accel * delta)
-		velocity.y -= GameConfig.missile_boost_gravity * delta  # keep gravity in boost
+		velocity = velocity.move_toward(desired_velocity, accel * delta)
+		velocity.y -= grav * delta
 
 	position += velocity * delta
 	_orient_to_velocity()
