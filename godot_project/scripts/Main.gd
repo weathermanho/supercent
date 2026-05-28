@@ -321,7 +321,9 @@ func _fire_missle() -> void:
 func _spawn_missle(yaw_offset_deg: float) -> void:
 	var m: Node3D = MissleScene.instantiate()
 	add_child(m); _missles.append(m)
-	m.position = airplane.position + Vector3(40.0, 0.0, 0.0)
+	# Drop point under the fuselage; fan shots are spread laterally (z) so they
+	# fall in slightly different lanes instead of stacking.
+	m.position = airplane.position + Vector3(10.0, -8.0, yaw_offset_deg * 1.5)
 
 	# Set scale per current weapon stage.
 	match GameConfig.weapon_stage:
@@ -329,16 +331,11 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 		2: m.missile_scale = GameConfig.missile_scale_stage2
 		_: m.missile_scale = GameConfig.missile_scale_stage3
 
-	# Two-phase launch: EJECT the missile downward (+ a gentle forward push) so it
-	# visibly drops below the plane first; the booster (Missle.step) then ignites
-	# and homes onto the locked target. We do NOT aim at the target on launch —
-	# the drop comes first. Fan spread (yaw) is applied to the forward push.
-	var tgt: Node3D = _find_missle_target()
-	var fwd: Vector3 = Vector3.RIGHT.rotated(Vector3.UP, deg_to_rad(yaw_offset_deg))
-	m.velocity = fwd * GameConfig.missile_initial_forward_speed \
-		+ Vector3.DOWN * GameConfig.missile_initial_drop_speed \
-		+ airplane.estimated_velocity * 0.15
-	m.target = tgt
+	# Pure vertical free-fall on launch (no forward, no inherited velocity) so the
+	# missile drops straight out of the fuselage; the booster (Missle.step) then
+	# ignites and flies/homes to the target. The drop comes first, cleanly.
+	m.velocity = Vector3.DOWN * GameConfig.missile_initial_drop_speed
+	m.target = _find_missle_target()
 
 
 ## The target the player is "pointing at": the nearest one ahead (giants only
