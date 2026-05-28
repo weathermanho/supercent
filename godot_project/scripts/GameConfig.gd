@@ -89,13 +89,13 @@ var weapon_stage: int = 1
 var best_distance: int = 0
 
 # Missile tuning (moved out of Missle.gd so it can be tweaked at runtime).
-var missile_initial_forward_speed: float = 120.0
-var missile_initial_drop_speed: float = 60.0
-var missile_drop_gravity: float = 500.0       # gravity during drop phase (0..DROP_DURATION)
-var missile_boost_gravity: float = 120.0      # gravity also during boost phase
-var missile_boost_accel: float = 800.0        # weakened from 4500 -> 800 (less homing)
+var missile_initial_forward_speed: float = 220.0  # punchy forward launch (was 120)
+var missile_initial_drop_speed: float = 20.0      # small ejection dip only (was 60)
+var missile_drop_gravity: float = 200.0       # gravity during drop phase (was 500 — less plunge)
+var missile_boost_gravity: float = 60.0       # gravity also during boost phase (was 120)
+var missile_boost_accel: float = 1100.0       # homing strength for normal targets (was 800)
 var missile_max_speed: float = 2200.0
-var missile_drop_duration: float = 0.3
+var missile_drop_duration: float = 0.18       # shorter ejection before the booster (was 0.3)
 var missile_scale_stage1: float = 0.4
 var missile_scale_stage2: float = 0.8
 var missile_scale_stage3: float = 1.4

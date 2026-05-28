@@ -328,12 +328,17 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 		2: m.missile_scale = GameConfig.missile_scale_stage2
 		_: m.missile_scale = GameConfig.missile_scale_stage3
 
-	# Aim direction: from plane to current world cursor target.
+	# Aim FORWARD (+X) toward the locked target — targets are ahead of the
+	# plane, so the missile visibly flies at what it tracks. Without a lock it
+	# flies straight forward (NOT toward the cursor, which sits on the plane's
+	# own depth plane and would send the shot backwards like a waterfall).
+	var tgt: Node3D = _find_missle_target()
 	var aim: Vector3 = Vector3.RIGHT
-	var to_cursor: Vector3 = _get_world_cursor() - m.position
-	if to_cursor.length_squared() > 1.0:
-		aim = to_cursor.normalized()
-	# Tilt by yaw_offset (rotate around Y).
+	if tgt != null:
+		var to_t: Vector3 = tgt.position - m.position
+		if to_t.length_squared() > 1.0:
+			aim = to_t.normalized()
+	# Tilt by yaw_offset (fan spread, rotate around Y).
 	if absf(yaw_offset_deg) > 0.01:
 		aim = aim.rotated(Vector3.UP, deg_to_rad(yaw_offset_deg))
 
@@ -341,9 +346,7 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 	var forward_speed: float = GameConfig.missile_initial_forward_speed
 	var drop_speed: float = GameConfig.missile_initial_drop_speed
 	m.velocity = aim * forward_speed + Vector3.DOWN * drop_speed + airplane.estimated_velocity
-
-	# Target: lock-on only — no nearest fallback (handoff §부록C "완전 유도 금지").
-	m.target = _find_missle_target()
+	m.target = tgt
 
 
 func _find_missle_target() -> Node3D:
@@ -560,7 +563,9 @@ func _on_game_over() -> void:
 # ----- Input -----------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event.is_action_pressed("fire_missle"):
+	var left_click: bool = (event is InputEventMouseButton and event.pressed
+		and event.button_index == MOUSE_BUTTON_LEFT)
+	if event.is_action_pressed("fire_missle") or left_click:
 		_fire_missle()
 	elif event.is_action_pressed("reset_game"):
 		get_tree().reload_current_scene()
