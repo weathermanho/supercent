@@ -2,11 +2,15 @@ extends Node3D
 ## Owns the world look: gradient sky, sand-colored fog, sand ground plane,
 ## warm directional light. Replaces Main._setup_lighting().
 
-const SKY_TOP := Color8(70, 170, 195)          # vivid teal — match reference image
-const SKY_HORIZON := Color8(228, 210, 170)     # sand horizon (matches ground)
-const GROUND_COLOR := Color8(232, 210, 165)
-const FOG_COLOR := Color8(232, 210, 165)
-const SUN_COLOR := Color(1.0, 0.93, 0.82)
+# image.png mood: tiny figures dwarfed by colossal concrete monoliths fading
+# into a luminous cool mist. High-key haze (not black), desaturated steel sky,
+# cool concrete floor. The warm red pillar cores + giant silhouette pop against
+# this grey.
+const SKY_TOP := Color8(132, 152, 170)         # muted steel blue
+const SKY_HORIZON := Color8(196, 203, 210)     # misty light grey
+const GROUND_COLOR := Color8(138, 140, 147)    # cool concrete floor
+const FOG_COLOR := Color8(200, 206, 213)       # luminous cool mist
+const SUN_COLOR := Color(0.95, 0.96, 1.0)      # cool white
 
 @onready var _env: WorldEnvironment = $WorldEnv
 
@@ -28,25 +32,28 @@ func _setup_environment() -> void:
 	psm.ground_horizon_color = SKY_HORIZON
 	psm.ground_bottom_color = GROUND_COLOR
 	psm.sun_angle_max = 30.0
-	psm.sun_curve = 0.25  # sharper horizon split — matches reference's strong cool/warm cut
+	psm.sun_curve = 0.5   # soft, mist-like horizon blend (no hard cut)
 	sky.sky_material = psm
 	env.sky = sky
 	env.background_mode = Environment.BG_SKY
 
-	# Ambient — use the sky for soft fill.
+	# Ambient — misty scenes are high-ambient (soft, shadow-fill).
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_SKY
-	env.ambient_light_energy = 0.6
+	env.ambient_light_energy = 0.85
 
 	# Fog — depth-based haze on the GROUND only. fog_sky_affect defaults to 1.0
 	# in Godot 4, which tints the whole sky to the sand fog color and erases the
 	# teal — set it to 0 so the sky keeps its vivid cool gradient and fog only
 	# softens distant ground geometry.
+	# Exponential fog (Godot 4 default mode): density + a cool mist colour. Kept
+	# light enough that near pillars stay solid, thick enough that distant
+	# monoliths dissolve into haze. sky_affect blends the horizon into the mist
+	# so there's no hard ground line (the image has none).
 	env.fog_enabled = true
 	env.fog_light_color = FOG_COLOR
-	env.fog_sky_affect = 0.0
-	env.fog_density = 0.0006
-	env.fog_depth_begin = 2200.0
-	env.fog_depth_end = 7000.0
+	env.fog_sky_affect = 0.45
+	env.fog_density = 0.00072
+	env.fog_aerial_perspective = 0.5
 
 	# Tonemap for warmer look.
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC

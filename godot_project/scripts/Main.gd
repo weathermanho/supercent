@@ -77,8 +77,8 @@ func _prime_opening() -> void:
 	# A welcoming opening: a couple of slow colossi looming ahead (awe) plus a
 	# staggered run of easy breakable normals so the player starts comboing
 	# immediately and the field already reads as a dense forest.
-	_spawn_pillar(PillarScript.Kind.COLOSSUS, false, 2600.0, -150.0 + randf() * 60.0)
-	_spawn_pillar(PillarScript.Kind.COLOSSUS, false, 3800.0, 130.0 + randf() * 60.0)
+	_spawn_colossus(false, 2600.0, -1.0)
+	_spawn_colossus(false, 3800.0, 1.0)
 	for i in 7:
 		var z: float = -150.0 + randf() * 300.0
 		_spawn_pillar(PillarScript.Kind.NORMAL, true, 1300.0 + i * 520.0, z)
@@ -195,7 +195,7 @@ func _construct_pillar_wave() -> void:
 	if diff < 0.25:
 		# Early: awe + easy combo fodder.
 		if roll < 0.5:
-			_spawn_pillar(PillarScript.Kind.COLOSSUS, randf() < 0.25, SPAWN_X, -120.0 + randf() * 240.0)
+			_spawn_colossus(randf() < 0.25, SPAWN_X, 0.0)
 			_spawn_pillar(PillarScript.Kind.NORMAL, true, SPAWN_X + 500.0, -120.0 + randf() * 240.0)
 		else:
 			_spawn_normal_cluster(2 + int(randf() * 2.0))
@@ -205,7 +205,7 @@ func _construct_pillar_wave() -> void:
 		elif roll < 0.7:
 			_spawn_normal_cluster(3 + int(randf() * 2.0))
 		else:
-			_spawn_pillar(PillarScript.Kind.COLOSSUS, randf() < 0.3, SPAWN_X, -100.0 + randf() * 200.0)
+			_spawn_colossus(randf() < 0.3, SPAWN_X, 0.0)
 			_spawn_spike_line(2)
 	else:
 		# Late: storm. Two formations stacked.
@@ -216,7 +216,7 @@ func _construct_pillar_wave() -> void:
 			_spawn_pillar(PillarScript.Kind.FAKE, randf() < 0.4, SPAWN_X, -80.0 + randf() * 160.0)
 			_spawn_normal_cluster(4)
 		else:
-			_spawn_pillar(PillarScript.Kind.COLOSSUS, true, SPAWN_X, -60.0 + randf() * 120.0)
+			_spawn_colossus(true, SPAWN_X, 0.0)
 			_spawn_spike_line(3)
 
 
@@ -237,6 +237,17 @@ func _spawn_spike_line(count: int) -> void:
 	for i in count:
 		var z: float = -200.0 + randf() * 400.0
 		_spawn_pillar(PillarScript.Kind.SPIKE, randf() < 0.7, SPAWN_X + i * 220.0, z)
+
+
+## Colossi loom in a SIDE lane (never the centre) so they overwhelm the frame
+## without burying the chase camera in a dead-centre wall. `side`: -1/+1 forces
+## a side, 0 picks randomly.
+func _spawn_colossus(breakable: bool, x: float, side: float) -> void:
+	var s: float = side
+	if absf(s) < 0.5:
+		s = -1.0 if randf() < 0.5 else 1.0
+	var z: float = s * (340.0 + randf() * 130.0)
+	_spawn_pillar(PillarScript.Kind.COLOSSUS, breakable, x, z)
 
 
 func _spawn_pillar(kind: int, breakable: bool, x: float, z: float) -> void:
@@ -300,7 +311,8 @@ func _construct_giant() -> void:
 	var giant := TargetScene.instantiate()
 	giant.is_giant = true
 	add_child(giant)
-	giant.position = Vector3(2200.0, 125.0, 0.0)
+	giant.position = Vector3(2200.0, 170.0, 0.0)
+	giant.scale = Vector3.ONE * 2.2   # loom huge — the screen-erasing climax
 	giant.wall = null
 	_targets.append(giant)
 
@@ -324,7 +336,7 @@ func _build_structures() -> void:
 		add_child(s); _structures.append(s)
 		var h := 40.0 + randf() * 120.0
 		s.position = Vector3(SPAWN_X, h * 0.5, -1100.0 + randf() * 650.0)
-		s.init_geometry(60.0 + randf() * 80.0, h, 60.0 + randf() * 80.0, GameColors.BROWN_DARK, 0)
+		s.init_geometry(60.0 + randf() * 80.0, h, 60.0 + randf() * 80.0, Color8(110, 113, 120), 0)
 	for i in n:
 		var s2 := BuildingScene.instantiate()
 		add_child(s2); _structures.append(s2)
@@ -402,7 +414,7 @@ func _aim_pos(node: Node3D) -> Vector3:
 
 
 func _aim_radius(node: Node3D) -> float:
-	return 95.0 if _is_giant_node(node) else 32.0
+	return 170.0 if _is_giant_node(node) else 32.0
 
 
 func _lock_window(node: Node3D) -> float:
@@ -537,12 +549,15 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 		flash_overlay.flash(0.22, 0.10)
 		return
 
-	# Finish: full showpiece combo.
+	# Finish: full showpiece combo — a cluster of big plumes across the giant so
+	# it reads as a screen-erasing detonation.
 	time_scaler.request_slowmo(GameConfig.slowmo_giant_scale, GameConfig.slowmo_giant_duration)
 	shaker.shake(GameConfig.shake_giant_intensity, GameConfig.shake_giant_duration)
-	flash_overlay.flash(0.5, 0.35, false)
-	_spawn_explosion(g.position, 4)
-	_spawn_shockwave(g.position, 48.0, 0.9)
+	flash_overlay.flash(0.45, 0.3, false)
+	for k in 5:
+		var off := Vector3((randf() - 0.5) * 220.0, (randf() - 0.5) * 260.0, (randf() - 0.5) * 160.0)
+		_spawn_explosion(g.position + off, 4)
+	_spawn_shockwave(g.position, 60.0, 1.0)
 	_make_white_spheres(g.position, true)
 
 	var idx: int = _targets.find(g)

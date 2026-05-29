@@ -55,9 +55,9 @@ func configure(kind_: int, breakable_: bool) -> void:
 
 	match kind:
 		Kind.COLOSSUS:
-			w = 220.0 + randf() * 120.0
-			d = 220.0 + randf() * 120.0
-			h = 620.0 + randf() * 260.0
+			w = 170.0 + randf() * 110.0
+			d = 170.0 + randf() * 110.0
+			h = 500.0 + randf() * 240.0
 			telegraph_time = 0.9
 			rise_time = 1.6
 			telegraph_x = 2200.0
@@ -90,9 +90,10 @@ func configure(kind_: int, breakable_: bool) -> void:
 func _ready() -> void:
 	position.y = _y_hidden
 
-	# Concrete body. Solid dark for unbreakable; slightly lighter & warmer for
-	# breakable so even before you spot the core the silhouette hints "target".
-	var body_color: Color = GameColors.BROWN if breakable else GameColors.BROWN_DARK
+	# Concrete body. Cool dark grey for unbreakable; a lighter, slightly warm
+	# concrete for breakable so even before the red core reads the silhouette
+	# hints "target" (image.png monolith tone).
+	var body_color: Color = Color8(134, 126, 118) if breakable else Color8(94, 97, 104)
 	_body = BoxFactory.make_box(w, h, d, body_color)
 	add_child(_body)
 

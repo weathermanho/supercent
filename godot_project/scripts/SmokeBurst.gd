@@ -35,10 +35,10 @@ var _puffs: Array = []
 
 func _ready() -> void:
 	var p: float = maxf(power, 0.4)
-	var smoke_n: int = int(5 + p * 3.0)
-	var fire_n: int = 0 if ground_burst else int(2 + p * 1.2)
-	var debris_n: int = 0 if ground_burst else int(3 + p * 2.0)
-	var base_r: float = (22.0 + p * 10.0) * (1.4 if ground_burst else 1.0)
+	var smoke_n: int = int(7 + p * 3.5)
+	var fire_n: int = 0 if ground_burst else int(3 + p * 1.6)
+	var debris_n: int = 0 if ground_burst else int(4 + p * 2.5)
+	var base_r: float = (28.0 + p * 13.0) * (1.5 if ground_burst else 1.0)
 
 	for i in smoke_n:
 		_add_smoke(p, base_r)
@@ -75,9 +75,9 @@ func _add_fire(p: float) -> void:
 	add_child(pf.node)
 	pf.node.position = Vector3((randf() - 0.5) * 20.0, randf() * 14.0, (randf() - 0.5) * 20.0)
 	pf.vel = Vector3((randf() - 0.5) * 30.0, 30.0 + randf() * 30.0, (randf() - 0.5) * 30.0)
-	pf.s0 = (12.0 + p * 6.0) * (0.6 + randf() * 0.5)
-	pf.s1 = pf.s0 * 0.3
-	pf.life = 0.18 + randf() * 0.16
+	pf.s0 = (16.0 + p * 7.0) * (0.6 + randf() * 0.5)
+	pf.s1 = pf.s0 * 0.25
+	pf.life = 0.2 + randf() * 0.18
 	pf.base_alpha = 1.0
 	pf.node.scale = Vector3.ONE * pf.s0
 	_puffs.append(pf)
