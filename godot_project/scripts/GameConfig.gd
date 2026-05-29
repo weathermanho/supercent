@@ -72,7 +72,7 @@ var ennemy_distance_tolerance: float = 10.0
 var ennemy_value: int = 10
 var ennemies_speed: float = 0.6
 var ennemy_last_spawn: int = 0
-var distance_for_ennemies_spawn: int = 50
+var distance_for_ennemies_spawn: int = 16   # dense monolith forest (was 50)
 
 var status: int = STATUS_PLAYING
 
@@ -82,8 +82,31 @@ var status: int = STATUS_PLAYING
 ## Main._process multiplies dt_ms by this before passing to all step() callers.
 var time_scale: float = 1.0
 
-## Current weapon power level (1..3). ShowpieceDirector increments by distance.
+## Current weapon power level (1..3). Driven by combo tier now (was distance).
 var weapon_stage: int = 1
+
+# --- Combo gigantification (부록 C P0, 앞당김) -------------------------------
+## Consecutive breakable-pillar-core hits grow the missile through tiers. A
+## crash or a too-long gap with no hit resets it (forgiving: not per-miss).
+var combo: int = 0
+var combo_tier: int = 0
+var combo_timer: float = 0.0
+var combo_timeout: float = 3.5                       # sec without a hit -> reset
+var combo_thresholds: Array[int] = [2, 5, 9]         # hits to reach tier 1 / 2 / 3
+var max_combo_tier: int = 3
+## Missile scale per tier (0..3). 4축 ①크기.
+var missile_tier_scales: Array[float] = [0.24, 0.36, 0.52, 0.74]
+
+# --- HP / fail-state (역경의 이빨) -------------------------------------------
+var hp: int = 3
+var max_hp: int = 3
+var crash_iframes_max: float = 0.9                   # grace after a crash
+var crash_iframes: float = 0.0
+
+# --- Giant finish = skill check ---------------------------------------------
+## The missile must be at least this tier to actually finish a giant; below it,
+## hits only chip (so a sloppy approach arrives too weak to see the payoff).
+var giant_required_tier: int = 2
 
 ## Loaded from user://best.save at boot. Updated on game over.
 var best_distance: int = 0
@@ -139,6 +162,50 @@ func reset_to_defaults() -> void:
 	status = STATUS_PLAYING
 	time_scale = 1.0
 	weapon_stage = 1
+	combo = 0
+	combo_tier = 0
+	combo_timer = 0.0
+	hp = max_hp
+	crash_iframes = 0.0
+
+
+# --- Combo helpers -----------------------------------------------------------
+
+## A breakable pillar core was destroyed: extend the chain and (maybe) grow.
+func register_core_hit() -> void:
+	combo += 1
+	combo_timer = 0.0
+	_recompute_tier()
+
+
+func reset_combo() -> void:
+	combo = 0
+	combo_tier = 0
+	combo_timer = 0.0
+
+
+func _recompute_tier() -> void:
+	var t: int = 0
+	for i in combo_thresholds.size():
+		if combo >= combo_thresholds[i]:
+			t = i + 1
+	combo_tier = mini(t, max_combo_tier)
+	weapon_stage = clampi(combo_tier + 1, 1, 3)  # fan-fire count rides along
+
+
+## Call every frame with scaled delta-seconds. Decays the combo if the player
+## goes too long without a hit, and ticks down crash i-frames.
+func tick_combo(delta: float) -> void:
+	if crash_iframes > 0.0:
+		crash_iframes = maxf(0.0, crash_iframes - delta)
+	if combo > 0:
+		combo_timer += delta
+		if combo_timer >= combo_timeout:
+			reset_combo()
+
+
+func missile_scale_for_tier() -> float:
+	return missile_tier_scales[clampi(combo_tier, 0, missile_tier_scales.size() - 1)]
 
 
 ## Mirrors `normalize(v, vmin, vmax, tmin, tmax)` in tester.cpp.

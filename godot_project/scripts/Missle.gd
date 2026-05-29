@@ -18,6 +18,12 @@ var target: Node3D = null
 var time_alive: float = 0.0
 var prev_position: Vector3 = Vector3.ZERO
 
+## Combo tier this missile was fired at (drives giant skill-check + explosion
+## power). pierce = how many extra pillars it can punch through before dying
+## (4축 ③관통).
+var tier: int = 0
+var pierce: int = 0
+
 
 func _ready() -> void:
 	# Geometry: same boxy missile as before, but built so the nose is at
@@ -70,7 +76,7 @@ func step(dt_ms: float) -> void:
 		# instead of a smooth elliptical arc between the two phases.
 		var dir: Vector3 = Vector3.RIGHT
 		if target != null and is_instance_valid(target):
-			dir = (target.position - position).normalized()
+			dir = (target.global_position - global_position).normalized()
 		var spd: float = maxf(velocity.length(), 320.0)
 		spd = minf(spd + 3000.0 * delta, GameConfig.missile_max_speed)
 		velocity = dir * spd

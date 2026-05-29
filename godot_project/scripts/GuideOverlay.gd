@@ -48,13 +48,14 @@ func _process(delta: float) -> void:
 	_time += delta
 
 
-## `candidate` is the target the player is pointing at (nearest ahead), or null.
-## `locked` is true when it's aligned enough that a fired missile will home onto
-## it. We draw a faint forward aim-line plus a camera-facing bracket reticle on
-## the candidate — WHITE while merely in sight, RED + pulsing once locked — so
-## the player can always see the target and tell when the shot will connect.
-## Works for giants too (they have no wall and were previously un-marked).
-func update_overlay(plane_pos: Vector3, candidate: Node3D, locked: bool) -> void:
+## `target_pos` is the world point the player is pointing at (nearest hittable
+## core / giant cap), valid only when `has_target`. `locked` is true when it's
+## aligned enough that a fired missile will home onto it. We draw a faint
+## forward aim-line plus a camera-facing bracket reticle — WHITE while merely in
+## sight, RED + pulsing once locked. Position-based so it serves pillar cores
+## and giants alike.
+func update_overlay(plane_pos: Vector3, target_pos: Vector3, target_radius: float,
+		locked: bool, has_target: bool, is_giant: bool) -> void:
 	_line_mesh.clear_surfaces()
 	_circle_mesh.clear_surfaces()
 
@@ -65,27 +66,22 @@ func update_overlay(plane_pos: Vector3, candidate: Node3D, locked: bool) -> void
 	_line_mesh.surface_add_vertex(ray_end)
 	_line_mesh.surface_end()
 
-	if candidate == null or not is_instance_valid(candidate):
+	if not has_target:
 		return
-	_draw_reticle(candidate, locked)
+	_draw_reticle(target_pos, target_radius, locked, is_giant)
 
 
 ## Camera-facing square bracket (4 corner L's) centred on the target. White when
 ## merely in sight; red and pulsing once locked.
-func _draw_reticle(target: Node3D, locked: bool) -> void:
+func _draw_reticle(c: Vector3, base: float, locked: bool, is_giant: bool) -> void:
 	var cam: Camera3D = get_viewport().get_camera_3d()
 	if cam == null:
 		return
-	var is_giant: bool = ("is_giant" in target and target.is_giant)
-	var base: float = 95.0 if is_giant else 28.0
 	var pulse: float = (1.0 + 0.14 * sin(_time * TAU * 3.0)) if locked else 1.0
 	var half: float = base * pulse
 	var arm: float = half * 0.4
 	var right: Vector3 = cam.global_transform.basis.x
 	var up: Vector3 = cam.global_transform.basis.y
-	var c: Vector3 = target.position
-	if is_giant:
-		c += Vector3(0.0, 30.0, 0.0)  # bias up toward the rider silhouette
 
 	# Thickness scaled by distance so the bracket stays a roughly constant,
 	# clearly-visible width on screen (1px lines were invisible).

@@ -1,26 +1,28 @@
 extends Node3D
-## Top-level coordinator. Spawns/updates/draws everything that the original
-## `Tester` class managed inside its `Update()` / `Draw()` pair.
+## Top-level coordinator for the "걸리버 모놀리스 관문" stage.
 ##
-## The original game-loop branches:
-##   - status PLAYING:  spawn ennemies, structures, coins; advance distance / level / energy.
-##   - status GAME_OVER: plane falls; particles freeze.
+## The run: fly through a forest of colossal monoliths that ERUPT from the
+## ground. Shoot the glowing red cores of BREAKABLE pillars to chain a combo —
+## each tier grows the missile (size + blast + pierce + juice). Crash, or let
+## the chain lapse, and the missile shrinks. Reach the giant with a big-enough
+## missile to land the screen-erasing finish; arrive weak and you only chip it.
 
 const AirPlaneScene := preload("res://scenes/AirPlane.tscn")
 const MissleScene := preload("res://scenes/Missle.tscn")
 const BuildingScene := preload("res://scenes/Building.tscn")
 const TargetScene := preload("res://scenes/Target.tscn")
+const PillarScript := preload("res://scripts/Pillar.gd")
 const ParticleScript := preload("res://scripts/Particle.gd")
 const WhiteSphereScript := preload("res://scripts/WhiteSphere.gd")
 const GuideOverlayScript := preload("res://scripts/GuideOverlay.gd")
 const ShockwaveRingScript := preload("res://scripts/ShockwaveRing.gd")
+const SmokeBurstScript := preload("res://scripts/SmokeBurst.gd")
 
 const STEP_TIME := 0.01
 const PLANE_BASE_X := -100.0
-## A giant only becomes lockable / hittable once it has loomed in to this x, so
-## the climax kill lands in the mid-frame "hero zone" (big, centered, juice
-## on-screen) rather than as a tiny pop on the horizon or below the camera.
+## A giant only becomes lockable / hittable once it has loomed in to this x.
 const GIANT_VULNERABLE_X := 950.0
+const SPAWN_X := 4000.0
 
 @onready var camera: Camera3D = $Camera3D
 @onready var shaker: Node = $Camera3D/Shaker
@@ -36,65 +38,55 @@ const GIANT_VULNERABLE_X := 950.0
 var airplane: Node3D
 
 var _missles: Array[Node3D] = []
-var _buildings: Array[Node3D] = []
+var _pillars: Array[Node3D] = []
 var _structures: Array[Node3D] = []
-var _targets: Array[Node3D] = []  # red lock-on targets attached to walls
+var _targets: Array[Node3D] = []        # giants only
 var _particles: Array[Node3D] = []
 var _white_spheres: Array[Node3D] = []
 var _shockwaves: Array[Node3D] = []
+var _smokes: Array[Node3D] = []
 var _guide_overlay: Node3D
+
+# Dynamic-camera state: an extra pull-back/up offset that eases in when a big
+# monolith or the giant is looming, for a "scale-overwhelm" framing.
+var _cam_pull: float = 0.0
+var _cam_lift: float = 0.0
 
 
 func _ready() -> void:
 	GameConfig.reset_to_defaults()
 	director.reset()
 
-	# Airplane.
 	airplane = AirPlaneScene.instantiate()
 	airplane.position = Vector3(PLANE_BASE_X, GameConfig.plane_default_height, 0.0)
 	airplane.scale = Vector3.ONE * GameConfig.plane_scale
 	add_child(airplane)
 
-	# Guide-line + lock-on circle overlay.
 	_guide_overlay = GuideOverlayScript.new()
 	add_child(_guide_overlay)
 
-	# Chase camera (see _update_camera): sits just behind + slightly above the
-	# plane, looking forward along +X so the plane's tail is in frame and the
-	# action approaches from ahead. Lighting is owned by the Atmosphere node.
 	_update_camera()
 
-	# 0-3s ad hook: prime the corridor so frame 1 isn't an empty desert.
-	# Pre-spawn background ruins + one immediate building+target staggered along +X.
-	for k in 4:
+	# Prime the depth chain so frame 1 isn't an empty plain.
+	for k in 5:
 		_build_structures()
-	_prime_opening_corridor()
+	_prime_opening()
 
 
-func _prime_opening_corridor() -> void:
-	# Three building+target pairs at staggered x, so the camera sees a depth chain
-	# of "stuff coming" from frame 0.
-	var distances: Array[float] = [1200.0, 2200.0, 3400.0]
-	for x in distances:
-		var ww := 300.0 + randf() * 200.0
-		var wh := 110.0 + randf() * 40.0
-		var wd := 130.0
-		var wall := BuildingScene.instantiate()
-		add_child(wall); _buildings.append(wall)
-		wall.position = Vector3(x, randf() * 60.0 + wh * 0.5, -60.0 + randf() * 120.0)
-		wall.init_geometry(ww, wh, wd, GameColors.BROWN, 1)
-
-		var target := TargetScene.instantiate()
-		add_child(target)
-		target.position = Vector3(wall.position.x - ww * 0.5 - 30.0, wall.position.y, wall.position.z)
-		target.wall = wall
-		_targets.append(target)
+func _prime_opening() -> void:
+	# A welcoming opening: a couple of slow colossi looming ahead (awe) plus a
+	# staggered run of easy breakable normals so the player starts comboing
+	# immediately and the field already reads as a dense forest.
+	_spawn_pillar(PillarScript.Kind.COLOSSUS, false, 2600.0, -150.0 + randf() * 60.0)
+	_spawn_pillar(PillarScript.Kind.COLOSSUS, false, 3800.0, 130.0 + randf() * 60.0)
+	for i in 7:
+		var z: float = -150.0 + randf() * 300.0
+		_spawn_pillar(PillarScript.Kind.NORMAL, true, 1300.0 + i * 520.0, z)
 
 
 func _process(delta: float) -> void:
 	var dt_ms: float = delta * 1000.0 * GameConfig.time_scale
 
-	# Pass current mouse position (normalized) to airplane.
 	airplane.set_mouse_pos(_get_normalized_mouse())
 	airplane.set_world_target(_get_world_cursor())
 
@@ -104,36 +96,39 @@ func _process(delta: float) -> void:
 		_tick_falling()
 
 	_fly_missles(dt_ms)
-	_move_buildings(dt_ms)
+	_move_pillars(dt_ms)
+	_move_targets(dt_ms)
 	_move_structures(dt_ms)
 	_update_white_spheres(dt_ms)
 	_update_particles(dt_ms)
 	_update_shockwaves(dt_ms)
+	_update_smokes(dt_ms)
 
 	_update_camera()
-	var cand: Node3D = _pick_candidate()
-	_guide_overlay.update_overlay(airplane.position, cand, _is_locked(cand))
+	_update_aim_overlay()
 	_update_hud()
 
 
 func _tick_playing(dt_ms: float) -> void:
-	# Every ~5m: drop background structures.
+	var delta_s: float = dt_ms / 1000.0
+
 	if floori(GameConfig.distance) % 5 == 0:
 		_build_structures()
 
 	var d_int := floori(GameConfig.distance)
 
-	# Speed update tick.
 	if d_int % GameConfig.distance_for_speed_update == 0 and d_int > GameConfig.speed_last_update:
 		GameConfig.speed_last_update = d_int
 		GameConfig.target_base_speed += GameConfig.increment_speed_by_time * dt_ms
 
-	# Building spawn tick (formerly enemy spawn).
+	# Pillar-wave / giant spawn tick (was enemy spawn).
 	if d_int % GameConfig.distance_for_ennemies_spawn == 0 and d_int > GameConfig.ennemy_last_spawn:
 		GameConfig.ennemy_last_spawn = d_int
-		_construct_building()
+		if director.consume_giant_due():
+			_construct_giant()
+		else:
+			_construct_pillar_wave()
 
-	# Level update.
 	if d_int % GameConfig.distance_for_level_update == 0 and d_int > GameConfig.level_last_update:
 		GameConfig.level_last_update = d_int
 		GameConfig.level += 1
@@ -142,8 +137,9 @@ func _tick_playing(dt_ms: float) -> void:
 	GameConfig.distance += GameConfig.speed * dt_ms * GameConfig.ratio_speed_distance
 	GameConfig.energy -= GameConfig.speed * dt_ms * GameConfig.ratio_speed_energy
 	GameConfig.energy = maxf(0.0, GameConfig.energy)
-	director.tick_weapon(dt_ms / 1000.0)
-	if GameConfig.energy < 1.0:
+	GameConfig.tick_combo(delta_s)
+
+	if GameConfig.energy < 1.0 or GameConfig.hp <= 0:
 		GameConfig.status = GameConfig.STATUS_GAME_OVER
 		_on_game_over()
 
@@ -152,90 +148,155 @@ func _tick_playing(dt_ms: float) -> void:
 
 
 func _tick_falling() -> void:
-	# Plane animation is handled inside AirPlane.gd. We just clear particles.
 	for p in _particles:
 		p.queue_free()
 	_particles.clear()
 
 
-## Chase cam: stand a fixed distance behind (-X) and above the plane, follow it
-## laterally (z) so it never steers out of frame, and partly vertically (y) to
-## keep it framed without bobbing the whole world. Looks forward along +X. The
-## shaker's rest pose is refreshed to this transform each frame so screen-shake
-## offsets ride on top of the moving rig instead of fighting it.
+# ----- Camera ----------------------------------------------------------------
+
+## Chase cam behind + above the plane, looking forward. A dynamic pull-back/lift
+## eases in when a colossus or giant looms, dramatizing the scale contrast.
 func _update_camera() -> void:
 	var p: Vector3 = airplane.position
+
+	# Target extra offset from the biggest looming thing ahead.
+	var want_pull: float = 0.0
+	var want_lift: float = 0.0
+	for pl in _pillars:
+		if pl.kind == PillarScript.Kind.COLOSSUS and pl.is_solid_hazard():
+			var ahead: float = pl.global_position.x - p.x
+			if ahead > 0.0 and ahead < 2200.0:
+				var prox: float = 1.0 - ahead / 2200.0
+				want_pull = maxf(want_pull, 150.0 * prox)
+				want_lift = maxf(want_lift, 70.0 * prox)
+	for g in _targets:
+		if g.is_giant and g.position.x > 0.0 and g.position.x < 2400.0:
+			var prox2: float = clampf(1.0 - g.position.x / 2400.0, 0.0, 1.0)
+			want_pull = maxf(want_pull, 220.0 * prox2)
+			want_lift = maxf(want_lift, 110.0 * prox2)
+
+	_cam_pull += (want_pull - _cam_pull) * 0.05
+	_cam_lift += (want_lift - _cam_lift) * 0.05
+
 	var cam_y: float = GameConfig.plane_default_height \
-		+ (p.y - GameConfig.plane_default_height) * 0.6 + 55.0
-	camera.position = Vector3(PLANE_BASE_X - 230.0, cam_y, p.z)
+		+ (p.y - GameConfig.plane_default_height) * 0.6 + 55.0 + _cam_lift
+	camera.position = Vector3(PLANE_BASE_X - 230.0 - _cam_pull, cam_y, p.z)
 	camera.look_at(Vector3(PLANE_BASE_X + 1400.0, p.y - 10.0, p.z), Vector3.UP)
 	shaker.refresh_base()
 
 
-func _get_normalized_mouse() -> Vector2:
-	var win := get_viewport().get_visible_rect().size
-	var m := get_viewport().get_mouse_position()
-	return Vector2(-1.0 + (m.x / win.x) * 2.0, 1.0 - (m.y / win.y) * 2.0)
+# ----- Pillars ---------------------------------------------------------------
+
+func _construct_pillar_wave() -> void:
+	var diff: float = clampf(GameConfig.distance / 220.0, 0.0, 1.0)
+	var roll: float = randf()
+
+	if diff < 0.25:
+		# Early: awe + easy combo fodder.
+		if roll < 0.5:
+			_spawn_pillar(PillarScript.Kind.COLOSSUS, randf() < 0.25, SPAWN_X, -120.0 + randf() * 240.0)
+			_spawn_pillar(PillarScript.Kind.NORMAL, true, SPAWN_X + 500.0, -120.0 + randf() * 240.0)
+		else:
+			_spawn_normal_cluster(2 + int(randf() * 2.0))
+	elif diff < 0.6:
+		if roll < 0.34:
+			_spawn_spike_line(2 + int(randf() * 2.0))
+		elif roll < 0.7:
+			_spawn_normal_cluster(3 + int(randf() * 2.0))
+		else:
+			_spawn_pillar(PillarScript.Kind.COLOSSUS, randf() < 0.3, SPAWN_X, -100.0 + randf() * 200.0)
+			_spawn_spike_line(2)
+	else:
+		# Late: storm. Two formations stacked.
+		if roll < 0.4:
+			_spawn_normal_cluster(4 + int(randf() * 2.0))
+			_spawn_spike_line(2 + int(randf() * 2.0))
+		elif roll < 0.7:
+			_spawn_pillar(PillarScript.Kind.FAKE, randf() < 0.4, SPAWN_X, -80.0 + randf() * 160.0)
+			_spawn_normal_cluster(4)
+		else:
+			_spawn_pillar(PillarScript.Kind.COLOSSUS, true, SPAWN_X, -60.0 + randf() * 120.0)
+			_spawn_spike_line(3)
 
 
-## Casts a ray from the camera through the mouse cursor and returns the world
-## point where it hits the airplane's x-plane (x = PLANE_BASE_X). With this,
-## the cursor lines up with the airplane on screen pixel-for-pixel.
-func _get_world_cursor() -> Vector3:
-	var screen_pos: Vector2 = get_viewport().get_mouse_position()
-	var ray_origin: Vector3 = camera.project_ray_origin(screen_pos)
-	var ray_dir: Vector3 = camera.project_ray_normal(screen_pos)
-	if absf(ray_dir.x) < 0.0001:
-		return Vector3(PLANE_BASE_X, GameConfig.plane_default_height, 0.0)
-	var t: float = (PLANE_BASE_X - ray_origin.x) / ray_dir.x
-	return ray_origin + ray_dir * t
+## A row of NORMAL pillars across z, deliberately leaving one open lane so the
+## formation is always passable (never an unfair wall).
+func _spawn_normal_cluster(count: int) -> void:
+	var lanes: Array[float] = [-220.0, -130.0, -45.0, 45.0, 130.0, 220.0]
+	lanes.shuffle()
+	var open_lane: int = int(randf() * lanes.size())
+	for i in mini(count, lanes.size()):
+		if i == open_lane:
+			continue
+		var breakable: bool = randf() < 0.55
+		_spawn_pillar(PillarScript.Kind.NORMAL, breakable, SPAWN_X + randf() * 240.0, lanes[i])
 
 
-# ----- Buildings -------------------------------------------------------------
+func _spawn_spike_line(count: int) -> void:
+	for i in count:
+		var z: float = -200.0 + randf() * 400.0
+		_spawn_pillar(PillarScript.Kind.SPIKE, randf() < 0.7, SPAWN_X + i * 220.0, z)
 
-func _construct_building() -> void:
-	if director.consume_giant_due():
-		_construct_giant()
-		return
-	# Low desert-ruin blocks flanking the path. Kept SHORT (so the teal sky and
-	# the giant silhouette stay visible above them) and pushed well out in z (so
-	# they frame the corridor instead of engulfing the camera as tan walls), with
-	# varied length so gaps reveal the open desert behind.
-	var top := BuildingScene.instantiate()
-	add_child(top); _buildings.append(top)
-	var top_len := 350.0 + randf() * 300.0
-	var top_h := 90.0 + randf() * 70.0
-	top.position = Vector3(4000.0, top_h * 0.5, -340.0 - randf() * 120.0)
-	top.init_geometry(top_len, top_h, 90, GameColors.BROWN, 0)
 
-	var bot := BuildingScene.instantiate()
-	add_child(bot); _buildings.append(bot)
-	var bot_len := 350.0 + randf() * 300.0
-	var bot_h := 90.0 + randf() * 70.0
-	bot.position = Vector3(4000.0, bot_h * 0.5, 340.0 + randf() * 120.0)
-	bot.init_geometry(bot_len, bot_h, 90, GameColors.BROWN, 0)
+func _spawn_pillar(kind: int, breakable: bool, x: float, z: float) -> void:
+	var p: Node3D = PillarScript.new()
+	p.configure(kind, breakable)
+	add_child(p)
+	_pillars.append(p)
+	p.position = Vector3(x, p.position.y, z)
 
-	# A wall in the middle (transparent, type=1).
-	var wall := BuildingScene.instantiate()
-	add_child(wall); _buildings.append(wall)
-	var ww := 200.0 + randf() * 700.0
-	var wh := 90.0 + randf() * 70.0
-	var wd := 110.0 + randf() * 110.0
-	wall.position = Vector3(4000.0, randf() * 150.0 + wh * 0.5, -100.0 + randf() * 200.0)
-	wall.init_geometry(ww, wh, wd, GameColors.BROWN_DARK, 1)
 
-	# Target attached to the wall — a red icosahedron in front of it. The
-	# guide overlay uses `target.wall` to compute the forward-ray/wall-face
-	# intersection (matches `Tester::guideLines()` in the original).
-	var target := TargetScene.instantiate()
-	add_child(target)
-	target.position = Vector3(wall.position.x - ww * 0.5 - 30.0, wall.position.y, wall.position.z)
-	target.wall = wall
-	_targets.append(target)
+func _move_pillars(dt_ms: float) -> void:
+	var to_remove: Array[int] = []
+	for i in _pillars.size():
+		var pl := _pillars[i]
+		var alive: bool = pl.step(dt_ms, airplane.position.x)
 
+		# Eruption punch — a spike snapping up kicks the camera.
+		if pl.consume_erupt():
+			if pl.kind == PillarScript.Kind.SPIKE:
+				shaker.shake(GameConfig.shake_hit_intensity * 0.7, 0.12)
+			elif pl.kind == PillarScript.Kind.COLOSSUS:
+				shaker.shake(GameConfig.shake_hit_intensity * 1.1, 0.25)
+			_spawn_dust(Vector3(pl.global_position.x, PillarScript.GROUND_Y + 6.0, pl.global_position.z), pl.w)
+
+		# Plane crash.
+		if alive and pl.is_solid_hazard() and GameConfig.crash_iframes <= 0.0:
+			if absf(pl.global_position.x - airplane.position.x) < pl.w * 0.5 + 28.0 \
+			and absf(pl.global_position.z - airplane.position.z) < pl.d * 0.5 + 28.0 \
+			and airplane.position.y < pl.emerged_top_y + 26.0:
+				_on_crash(pl)
+
+		if not alive:
+			to_remove.append(i)
+	_cleanup(to_remove, _pillars)
+
+
+func _on_crash(pl: Node3D) -> void:
+	GameConfig.hp -= 1
+	GameConfig.reset_combo()
+	GameConfig.crash_iframes = GameConfig.crash_iframes_max
+
+	# Knock the plane away from the pillar.
+	var diff: Vector3 = airplane.position - pl.global_position
+	var dl: float = maxf(diff.length(), 0.001)
+	GameConfig.plane_collision_speed_x = 140.0 * diff.z / dl
+	GameConfig.plane_collision_speed_y = 90.0 * (1.0 if diff.y >= 0.0 else -1.0)
+
+	shaker.shake(GameConfig.shake_giant_intensity * 0.7, 0.35)
+	time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
+	flash_overlay.flash(0.35, 0.12)   # warm/red damage flash
+	_make_white_spheres(airplane.position, false)
+
+	if GameConfig.hp <= 0:
+		GameConfig.status = GameConfig.STATUS_GAME_OVER
+		_on_game_over()
+
+
+# ----- Giants ----------------------------------------------------------------
 
 func _construct_giant() -> void:
-	# A standalone giant target — no flanking buildings, so it dominates the frame.
 	var giant := TargetScene.instantiate()
 	giant.is_giant = true
 	add_child(giant)
@@ -244,53 +305,32 @@ func _construct_giant() -> void:
 	_targets.append(giant)
 
 
+func _move_targets(dt_ms: float) -> void:
+	var to_remove: Array[int] = []
+	var scroll: float = GameConfig.speed * dt_ms * GameConfig.ennemies_speed * 5000.0
+	for i in _targets.size():
+		_targets[i].position.x -= scroll * 0.6   # giants loom slowly
+		if _targets[i].position.x <= -1000.0:
+			to_remove.append(i)
+	_cleanup(to_remove, _targets)
+
+
+# ----- Background structures -------------------------------------------------
+
 func _build_structures() -> void:
-	var n := 1 + floori(randf() * 5.0)
+	var n := 1 + floori(randf() * 4.0)
 	for i in n:
 		var s := BuildingScene.instantiate()
 		add_child(s); _structures.append(s)
-		var h := 30.0 + randf() * 50.0
-		s.position = Vector3(4000.0, h * 0.5, -1000.0 + randf() * 650.0)
-		s.init_geometry(30.0 + randf() * 50.0, h, 30.0 + randf() * 50.0, GameColors.WHITE, 0)
+		var h := 40.0 + randf() * 120.0
+		s.position = Vector3(SPAWN_X, h * 0.5, -1100.0 + randf() * 650.0)
+		s.init_geometry(60.0 + randf() * 80.0, h, 60.0 + randf() * 80.0, GameColors.BROWN_DARK, 0)
 	for i in n:
 		var s2 := BuildingScene.instantiate()
 		add_child(s2); _structures.append(s2)
-		var h2 := 30.0 + randf() * 50.0
-		s2.position = Vector3(4000.0, h2 * 0.5, 350.0 + randf() * 1000.0)
-		s2.init_geometry(30.0 + randf() * 50.0, h2, 30.0 + randf() * 50.0, GameColors.WHITE, 0)
-
-
-func _move_buildings(dt_ms: float) -> void:
-	var to_remove: Array[int] = []
-	for i in _buildings.size():
-		var b := _buildings[i]
-		b.step(dt_ms)
-
-		# Plane collision (only check center distance with a generous tolerance).
-		if absf(b.position.y - airplane.position.y) < b.h * 0.5 + 30.0:
-			if absf(b.position.z - airplane.position.z) < b.d * 0.5 + 30.0:
-				if absf(b.position.x - airplane.position.x) < b.w * 0.5 + 30.0:
-					var diff := airplane.position - b.position
-					var d := diff.length()
-					if d > 0.0:
-						GameConfig.plane_collision_speed_x = 100.0 * diff.x / d
-						GameConfig.plane_collision_speed_y = 100.0 * diff.y / d
-
-		if b.position.x < -1000.0:
-			to_remove.append(i)
-	_cleanup(to_remove, _buildings)
-
-	# Targets scroll along with their walls. Giants scroll slower so they loom in
-	# the mid-frame "hero zone" long enough to be destroyed on-screen (otherwise
-	# they reach the camera and the kill juice fires below the visible frame).
-	var to_remove_targets: Array[int] = []
-	var scroll: float = GameConfig.speed * dt_ms * GameConfig.ennemies_speed * 5000.0
-	for i in _targets.size():
-		var f: float = 0.6 if _targets[i].is_giant else 1.0
-		_targets[i].position.x -= scroll * f
-		if _targets[i].position.x <= -1000.0:
-			to_remove_targets.append(i)
-	_cleanup(to_remove_targets, _targets)
+		var h2 := 40.0 + randf() * 120.0
+		s2.position = Vector3(SPAWN_X, h2 * 0.5, 450.0 + randf() * 1000.0)
+		s2.init_geometry(60.0 + randf() * 80.0, h2, 60.0 + randf() * 80.0, GameColors.BROWN_DARK, 0)
 
 
 func _move_structures(dt_ms: float) -> void:
@@ -306,7 +346,8 @@ func _move_structures(dt_ms: float) -> void:
 # ----- Missiles --------------------------------------------------------------
 
 func _fire_missle() -> void:
-	match GameConfig.weapon_stage:
+	# Fan count rides the combo tier (1 / 2 / 3 shots).
+	match clampi(GameConfig.combo_tier + 1, 1, 3):
 		1:
 			_spawn_missle(0.0)
 		2:
@@ -321,59 +362,83 @@ func _fire_missle() -> void:
 func _spawn_missle(yaw_offset_deg: float) -> void:
 	var m: Node3D = MissleScene.instantiate()
 	add_child(m); _missles.append(m)
-	# Drop point under the fuselage; fan shots are spread laterally (z) so they
-	# fall in slightly different lanes instead of stacking.
 	m.position = airplane.position + Vector3(10.0, -8.0, yaw_offset_deg * 1.5)
-
-	# Set scale per current weapon stage.
-	match GameConfig.weapon_stage:
-		1: m.missile_scale = GameConfig.missile_scale_stage1
-		2: m.missile_scale = GameConfig.missile_scale_stage2
-		_: m.missile_scale = GameConfig.missile_scale_stage3
-
-	# Pure vertical free-fall on launch (no forward, no inherited velocity) so the
-	# missile drops straight out of the fuselage; the booster (Missle.step) then
-	# ignites and flies/homes to the target. The drop comes first, cleanly.
+	m.missile_scale = GameConfig.missile_scale_for_tier()
+	m.tier = GameConfig.combo_tier
+	m.pierce = GameConfig.combo_tier   # higher tier punches through more pillars
 	m.velocity = Vector3.DOWN * GameConfig.missile_initial_drop_speed
 	m.target = _find_missle_target()
 
 
-## The target the player is "pointing at": the nearest one ahead (giants only
-## once they've loomed into the hero zone). May be off-axis — used to draw the
-## aim reticle so the player always sees what's coming and can line up on it.
+# ----- Aim / lock-on ---------------------------------------------------------
+
+## The thing the player is pointing at: the giant if it has loomed in, else the
+## nearest breakable pillar core ahead.
 func _pick_candidate() -> Node3D:
+	for g in _targets:
+		if g.is_giant and g.position.x <= GIANT_VULNERABLE_X and g.position.x > airplane.position.x:
+			return g
 	var best: Node3D = null
 	var best_x: float = INF
-	for t in _targets:
-		if t.position.x <= airplane.position.x:
+	for pl in _pillars:
+		if not pl.is_core_hittable():
 			continue
-		if t.is_giant and t.position.x > GIANT_VULNERABLE_X:
+		if pl.global_position.x <= airplane.position.x:
 			continue
-		if t.position.x < best_x:
-			best_x = t.position.x
-			best = t
+		if pl.global_position.x < best_x:
+			best_x = pl.global_position.x
+			best = pl
 	return best
 
 
-## y/z tolerance within which the candidate is locked. Giants are big looming
-## bosses, so they lock from much farther; normal targets need tighter aim.
-func _lock_window(t: Node3D) -> float:
-	return GameConfig.missile_lock_radius * (14.0 if t.is_giant else 1.0)
+func _is_giant_node(node: Node3D) -> bool:
+	return "is_giant" in node and node.is_giant
 
 
-func _is_locked(t: Node3D) -> bool:
-	if t == null or not is_instance_valid(t):
+func _aim_pos(node: Node3D) -> Vector3:
+	if node.has_method("core_world_pos"):
+		return node.core_world_pos()
+	return node.position + Vector3(0.0, 30.0, 0.0)
+
+
+func _aim_radius(node: Node3D) -> float:
+	return 95.0 if _is_giant_node(node) else 32.0
+
+
+func _lock_window(node: Node3D) -> float:
+	return GameConfig.missile_lock_radius * (14.0 if _is_giant_node(node) else 1.0)
+
+
+func _is_locked(node: Node3D) -> bool:
+	if node == null or not is_instance_valid(node):
 		return false
-	var dy: float = t.position.y - airplane.position.y
-	var dz: float = t.position.z - airplane.position.z
-	return sqrt(dy * dy + dz * dz) < _lock_window(t)
+	var ap: Vector3 = _aim_pos(node)
+	var dy: float = ap.y - airplane.position.y
+	var dz: float = ap.z - airplane.position.z
+	return sqrt(dy * dy + dz * dz) < _lock_window(node)
 
 
-## What a fired missile homes onto: the candidate, but only once it's locked.
-## When null the missile flies straight forward (it does not nose-dive).
+## Homing target for a fired missile: the candidate's aim node (a pillar core
+## node, or the giant). The missile homes whenever there's a candidate — the
+## skill is dodging + picking + chaining, not pixel-aiming (oto-fire + dodge
+## blueprint). Lock state only drives reticle feedback. Null -> fly straight.
 func _find_missle_target() -> Node3D:
 	var c: Node3D = _pick_candidate()
-	return c if _is_locked(c) else null
+	if c == null:
+		return null
+	if c.has_method("core_node"):
+		var cn: Node3D = c.core_node()
+		return cn if cn != null else c
+	return c
+
+
+func _update_aim_overlay() -> void:
+	var c: Node3D = _pick_candidate()
+	if c == null:
+		_guide_overlay.update_overlay(airplane.position, Vector3.ZERO, 0.0, false, false, false)
+		return
+	_guide_overlay.update_overlay(airplane.position, _aim_pos(c), _aim_radius(c),
+		_is_locked(c), true, _is_giant_node(c))
 
 
 func _fly_missles(dt_ms: float) -> void:
@@ -382,52 +447,108 @@ func _fly_missles(dt_ms: float) -> void:
 	for i in _missles.size():
 		var m := _missles[i]
 		m.step(dt_ms)
+		var consumed := false
 
-		var hit := false
-		# Target hit: swept segment-sphere check (missile moves in 3D now).
-		for j in _targets.size():
-			var t_pos: Vector3 = _targets[j].position
-			if _targets[j].is_giant and t_pos.x > GIANT_VULNERABLE_X:
+		# Giant hit (skill-checked by tier).
+		for g in _targets:
+			if not g.is_giant or g.position.x > GIANT_VULNERABLE_X:
 				continue
-			if _segment_point_distance(m.prev_position, m.position, t_pos) < (HIT_RADIUS * (8.0 if _targets[j].is_giant else 1.0)):
-				# Capture flag BEFORE _on_giant_hit mutates _targets.
-				var is_g: bool = _targets[j].is_giant
-				var killed: bool = _targets[j].take_damage(1)
-				if is_g:
-					_on_giant_hit(_targets[j], killed)
+			if _segment_point_distance(m.prev_position, m.position, g.position) < HIT_RADIUS * 8.0:
+				if m.tier >= GameConfig.giant_required_tier:
+					var killed: bool = g.take_damage(1)
+					_on_giant_hit(g, killed)
 				else:
-					_spawn_particles_at(t_pos, 30, 1, 8)
-					_spawn_shockwave(t_pos, 8.0, 0.4)
-					shaker.shake(GameConfig.shake_hit_intensity, GameConfig.shake_hit_duration)
-					time_scaler.request_hitstop(GameConfig.hitstop_duration)
-					flash_overlay.flash(0.15, 0.06)
-					if killed:
-						_targets[j].queue_free()
-						_targets.remove_at(j)
-				hit = true
+					_on_giant_chip(g)
+				consumed = true
 				break
+		if consumed:
+			to_remove.append(i)
+			continue
 
-		# Wall (building) hit: missile is inside an AABB.
-		if not hit:
-			for b in _buildings:
-				if absf(m.position.x - b.position.x) < b.w * 0.5 \
-				and absf(m.position.y - b.position.y) < b.h * 0.5 \
-				and absf(m.position.z - b.position.z) < b.d * 0.5:
+		# Pillar hit. A BREAKABLE pillar shatters on ANY body hit (the glowing
+		# core is the aim point, not a pixel-perfect weak spot — far better feel
+		# with manual aim); an UNBREAKABLE pillar just sparks and stops the shot.
+		var broke := false
+		var blocked := false
+		for pl in _pillars:
+			if not pl.is_solid_hazard():
+				continue
+			# AABB overlap with a small margin (front face emphasised in -X).
+			if m.position.x > pl.global_position.x - pl.w * 0.5 - HIT_RADIUS \
+			and m.position.x < pl.global_position.x + pl.w * 0.5 + HIT_RADIUS \
+			and absf(m.position.y - pl.global_position.y) < pl.h * 0.5 + HIT_RADIUS \
+			and absf(m.position.z - pl.global_position.z) < pl.d * 0.5 + HIT_RADIUS:
+				if pl.breakable and pl.core_alive:
+					_on_core_hit(pl, m)
+					broke = true
+				else:
 					_make_white_spheres(m.position, false)
-					_spawn_shockwave(m.position, 10.0, 0.45)
-					shaker.shake(GameConfig.shake_hit_intensity * 1.4, GameConfig.shake_hit_duration * 1.2)
-					time_scaler.request_hitstop(GameConfig.hitstop_duration)
-					flash_overlay.flash(0.15, 0.08)
-					hit = true
-					break
+					_spawn_shockwave(m.position, 8.0, 0.35)
+					shaker.shake(GameConfig.shake_hit_intensity * 0.6, 0.08)
+					blocked = true
+				break
+		if broke:
+			if m.pierce > 0:
+				m.pierce -= 1            # punch through, keep flying
+			else:
+				to_remove.append(i)
+			continue
+		if blocked:
+			to_remove.append(i)
+			continue
 
-		# Off-screen / underground.
-		if not hit and (m.position.x > 15000.0 or m.position.y < -1000.0):
-			hit = true
-
-		if hit:
+		if m.position.x > 15000.0 or m.position.y < -1000.0:
 			to_remove.append(i)
 	_cleanup(to_remove, _missles)
+
+
+func _on_core_hit(pl: Node3D, m: Node3D) -> void:
+	var prev_tier: int = GameConfig.combo_tier
+	pl.shatter()
+	GameConfig.register_core_hit()
+
+	var pos: Vector3 = pl.core_world_pos()
+	_spawn_explosion(pos, m.tier)
+
+	# Tier-up celebration.
+	if GameConfig.combo_tier > prev_tier:
+		shaker.shake(GameConfig.shake_hit_intensity * 1.6, 0.2)
+		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.4)
+		flash_overlay.flash(0.28, 0.12, false)
+	else:
+		shaker.shake(GameConfig.shake_hit_intensity, GameConfig.shake_hit_duration)
+		time_scaler.request_hitstop(GameConfig.hitstop_duration)
+
+
+func _on_giant_chip(g: Node3D) -> void:
+	# Missile too weak: visible "bounce" so the player learns to grow first.
+	_spawn_particles_at(g.position, 14, 1, 7)
+	_spawn_shockwave(g.position, 10.0, 0.3)
+	shaker.shake(GameConfig.shake_hit_intensity * 0.8, 0.1)
+	flash_overlay.flash(0.12, 0.06)
+
+
+func _on_giant_hit(g: Node3D, killed: bool) -> void:
+	if not killed:
+		_spawn_explosion(g.position, 2)
+		_spawn_particles_at(g.position, 25, 1, 9)
+		shaker.shake(GameConfig.shake_hit_intensity * 1.8, GameConfig.shake_hit_duration * 1.3)
+		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
+		flash_overlay.flash(0.22, 0.10)
+		return
+
+	# Finish: full showpiece combo.
+	time_scaler.request_slowmo(GameConfig.slowmo_giant_scale, GameConfig.slowmo_giant_duration)
+	shaker.shake(GameConfig.shake_giant_intensity, GameConfig.shake_giant_duration)
+	flash_overlay.flash(0.5, 0.35, false)
+	_spawn_explosion(g.position, 4)
+	_spawn_shockwave(g.position, 48.0, 0.9)
+	_make_white_spheres(g.position, true)
+
+	var idx: int = _targets.find(g)
+	if idx >= 0:
+		_targets.remove_at(idx)
+	g.start_fade(0.6)
 
 
 ## Closest distance from point `p` to segment `a→b`.
@@ -440,7 +561,31 @@ func _segment_point_distance(a: Vector3, b: Vector3, p: Vector3) -> float:
 	return (a + ab * u).distance_to(p)
 
 
-# ----- Particles + white spheres --------------------------------------------
+# ----- Explosions / particles ------------------------------------------------
+
+## Unified destruction burst, scaled by `power` (≈ missile tier 0..4). Layered:
+## premium smoke plume + fire flash + concrete debris + shockwave.
+func _spawn_explosion(pos: Vector3, power: int) -> void:
+	var p: float = float(power)
+	var smoke: Node3D = SmokeBurstScript.new()
+	smoke.power = p
+	add_child(smoke)
+	smoke.global_position = pos
+	_smokes.append(smoke)
+
+	_spawn_shockwave(pos, 10.0 + p * 8.0, 0.4 + p * 0.08)
+	_spawn_particles_at(pos, int(16 + p * 10.0), 1, int(7 + p * 2.0))
+
+
+func _spawn_dust(pos: Vector3, footprint: float) -> void:
+	# Low ground dust when a pillar erupts.
+	var smoke: Node3D = SmokeBurstScript.new()
+	smoke.power = clampf(footprint / 120.0, 0.5, 3.0)
+	smoke.ground_burst = true
+	add_child(smoke)
+	smoke.global_position = pos
+	_smokes.append(smoke)
+
 
 func _spawn_particles_at(pos: Vector3, density: int, color: int, scale_: int) -> void:
 	for i in density:
@@ -484,32 +629,6 @@ func _update_particles(dt_ms: float) -> void:
 	_cleanup(to_remove, _particles)
 
 
-func _on_giant_hit(g: Node3D, killed: bool) -> void:
-	if not killed:
-		# Chip hit: medium juice.
-		_spawn_particles_at(g.position, 25, 1, 9)
-		_spawn_shockwave(g.position, 14.0, 0.4)
-		shaker.shake(GameConfig.shake_hit_intensity * 1.6, GameConfig.shake_hit_duration * 1.3)
-		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
-		flash_overlay.flash(0.22, 0.10)
-		_make_white_spheres(g.position, false)
-		return
-
-	# Kill: full showpiece combo. Use bright (cooler) flash to read as climactic.
-	time_scaler.request_slowmo(GameConfig.slowmo_giant_scale, GameConfig.slowmo_giant_duration)
-	shaker.shake(GameConfig.shake_giant_intensity, GameConfig.shake_giant_duration)
-	flash_overlay.flash(0.5, 0.35, false)
-	_spawn_shockwave(g.position, 40.0, 0.8)
-	_make_white_spheres(g.position, true)
-	_spawn_particles_at(g.position, 80, 1, 12)
-
-	# Remove from _targets array (so it stops being hit-tested) but fade the mesh.
-	var idx: int = _targets.find(g)
-	if idx >= 0:
-		_targets.remove_at(idx)
-	g.start_fade(0.6)
-
-
 func _spawn_shockwave(pos: Vector3, end_scale_: float, duration_: float) -> void:
 	var ring: Node3D = ShockwaveRingScript.new()
 	ring.end_scale = end_scale_
@@ -535,9 +654,16 @@ func _update_white_spheres(dt_ms: float) -> void:
 	_cleanup(to_remove, _white_spheres)
 
 
+func _update_smokes(dt_ms: float) -> void:
+	var to_remove: Array[int] = []
+	for i in _smokes.size():
+		if not _smokes[i].step(dt_ms):
+			to_remove.append(i)
+	_cleanup(to_remove, _smokes)
+
+
 # ----- Helpers ---------------------------------------------------------------
 
-## Removes indices (sorted ascending) from `arr`, freeing the nodes.
 func _cleanup(indices: Array[int], arr: Array[Node3D]) -> void:
 	for k in range(indices.size() - 1, -1, -1):
 		var idx := indices[k]
@@ -546,8 +672,26 @@ func _cleanup(indices: Array[int], arr: Array[Node3D]) -> void:
 		arr.remove_at(idx)
 
 
+func _get_normalized_mouse() -> Vector2:
+	var win := get_viewport().get_visible_rect().size
+	var m := get_viewport().get_mouse_position()
+	return Vector2(-1.0 + (m.x / win.x) * 2.0, 1.0 - (m.y / win.y) * 2.0)
+
+
+func _get_world_cursor() -> Vector3:
+	var screen_pos: Vector2 = get_viewport().get_mouse_position()
+	var ray_origin: Vector3 = camera.project_ray_origin(screen_pos)
+	var ray_dir: Vector3 = camera.project_ray_normal(screen_pos)
+	if absf(ray_dir.x) < 0.0001:
+		return Vector3(PLANE_BASE_X, GameConfig.plane_default_height, 0.0)
+	var t: float = (PLANE_BASE_X - ray_origin.x) / ray_dir.x
+	return ray_origin + ray_dir * t
+
+
 func _update_hud() -> void:
-	distance_label.text = "Distance: %d   Level: %d" % [int(GameConfig.distance), GameConfig.level]
+	var hearts: String = "HP " + str(maxi(GameConfig.hp, 0)) + "/" + str(GameConfig.max_hp)
+	distance_label.text = "Dist %d   %s   Combo x%d (T%d)" % [
+		int(GameConfig.distance), hearts, GameConfig.combo, GameConfig.combo_tier]
 	energy_bar.value = GameConfig.energy
 	best_label.text = "Best: %d" % GameConfig.best_distance
 	if GameConfig.status == GameConfig.STATUS_GAME_OVER:
