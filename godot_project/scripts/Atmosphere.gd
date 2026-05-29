@@ -45,15 +45,9 @@ func _setup_environment() -> void:
 	# in Godot 4, which tints the whole sky to the sand fog color and erases the
 	# teal — set it to 0 so the sky keeps its vivid cool gradient and fog only
 	# softens distant ground geometry.
-	# Exponential fog (Godot 4 default mode): density + a cool mist colour. Kept
-	# light enough that near pillars stay solid, thick enough that distant
-	# monoliths dissolve into haze. sky_affect blends the horizon into the mist
-	# so there's no hard ground line (the image has none).
-	env.fog_enabled = true
-	env.fog_light_color = FOG_COLOR
-	env.fog_sky_affect = 0.45
-	env.fog_density = 0.00072
-	env.fog_aerial_perspective = 0.5
+	# Background fog disabled per user request — the steel/concrete palette
+	# carries the mood by itself; the haze was crowding the picture.
+	env.fog_enabled = false
 
 	# Tonemap for warmer look.
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC

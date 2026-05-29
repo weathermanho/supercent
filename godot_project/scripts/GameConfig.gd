@@ -6,9 +6,9 @@ const STATUS_GAME_OVER := 0
 const STATUS_PLAYING := 1
 
 var speed: float = 0.0
-var init_speed: float = 0.00022        # calmer pace (was 0.00035) — easier to aim
-var base_speed: float = 0.00022
-var target_base_speed: float = 0.00022
+var init_speed: float = 0.00014        # calmer still — room to breathe between beats
+var base_speed: float = 0.00014
+var target_base_speed: float = 0.00014
 var increment_speed_by_time: float = 0.0
 var increment_speed_by_level: float = 0.000003
 var distance_for_speed_update: int = 100
@@ -72,7 +72,7 @@ var ennemy_distance_tolerance: float = 10.0
 var ennemy_value: int = 10
 var ennemies_speed: float = 0.6
 var ennemy_last_spawn: int = 0
-var distance_for_ennemies_spawn: int = 16   # dense monolith forest (was 50)
+var distance_for_ennemies_spawn: int = 22   # forest with breathing room (was 16)
 
 var status: int = STATUS_PLAYING
 
@@ -91,7 +91,7 @@ var weapon_stage: int = 1
 var combo: int = 0
 var combo_tier: int = 0
 var combo_timer: float = 0.0
-var combo_timeout: float = 3.5                       # sec without a hit -> reset
+var combo_timeout: float = 4.5                       # sec without a hit -> reset
 var combo_thresholds: Array[int] = [2, 5, 9]         # hits to reach tier 1 / 2 / 3
 var max_combo_tier: int = 3
 ## Missile scale per tier (0..3). 4축 ①크기.
