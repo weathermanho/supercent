@@ -71,28 +71,28 @@ func configure(kind_: int, breakable_: bool, from_ceiling_: bool = false) -> voi
 			h = 460.0 + randf() * 280.0
 			telegraph_time = 0.9
 			rise_time = 1.6
-			telegraph_x = 2200.0
+			telegraph_x = 2900.0
 		Kind.SPIKE:
 			w = 38.0 + randf() * 22.0
 			d = 38.0 + randf() * 22.0
 			h = 300.0 + randf() * 180.0
 			telegraph_time = 0.32
 			rise_time = 0.22
-			telegraph_x = 1500.0
+			telegraph_x = 2200.0
 		Kind.FAKE:
 			w = 70.0 + randf() * 80.0
 			d = 70.0 + randf() * 80.0
 			h = 200.0 + randf() * 200.0
 			telegraph_time = 0.5
 			rise_time = 0.7
-			telegraph_x = 1800.0
+			telegraph_x = 2500.0
 		_:  # NORMAL / cluster member — WIDE range so some are flyable-over
 			w = 50.0 + randf() * 150.0
 			d = 50.0 + randf() * 150.0
 			h = 130.0 + randf() * 280.0
 			telegraph_time = 0.55
 			rise_time = 0.55
-			telegraph_x = 1800.0
+			telegraph_x = 2500.0
 
 	# Cap ceiling pillars so the descended bottom can't punch through the floor.
 	if from_ceiling:
