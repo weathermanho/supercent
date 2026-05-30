@@ -4,6 +4,7 @@ extends Node
 
 const STATUS_GAME_OVER := 0
 const STATUS_PLAYING := 1
+const STATUS_TITLE := 2
 
 var speed: float = 0.0
 var init_speed: float = 0.00014        # calmer still — room to breathe between beats

@@ -137,8 +137,10 @@ func _process(delta: float) -> void:
 
 	if GameConfig.status == GameConfig.STATUS_PLAYING:
 		_update_playing(dt_ms)
-	else:
+	elif GameConfig.status == GameConfig.STATUS_GAME_OVER:
 		_update_falling(dt_ms)
+	# else (STATUS_TITLE): idle, propeller still spins via the unconditional
+	# block above; the plane just hovers in place.
 
 	var dt_s: float = max(delta, 0.0001)
 	var instant: Vector3 = (global_position - _prev_position) / dt_s

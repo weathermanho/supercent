@@ -66,11 +66,30 @@ var _cam_lift: float = 0.0
 ## "stage advance" beats (e.g. the first ceiling pillar moment).
 var _current_stage: int = 1
 
+# --- Per-run stats (shown on the game-over screen) ----------------------------
+var _max_combo_run: int = 0
+var _max_tier_run: int = 0
+var _giants_killed_run: int = 0
+
+# --- Title / game-over overlays (built programmatically in _ready) ------------
+var _title_layer: ColorRect
+var _gameover_layer: ColorRect
+var _tap_label: Label
+var _gameover_title: Label
+var _gameover_dist: Label
+var _gameover_best: Label
+var _gameover_combo: Label
+var _gameover_giants: Label
+var _gameover_tap: Label
+
 
 func _ready() -> void:
 	GameConfig.reset_to_defaults()
 	director.reset()
 	_current_stage = 1
+	_max_combo_run = 0
+	_max_tier_run = 0
+	_giants_killed_run = 0
 
 	airplane = AirPlaneScene.instantiate()
 	airplane.position = Vector3(PLANE_BASE_X, GameConfig.plane_default_height, 0.0)
@@ -85,6 +104,13 @@ func _ready() -> void:
 	# No background scenery — the world is an empty concrete stage so each
 	# pillar emergence is the only event. Theatrical, image.png-clean.
 	_prime_opening()
+
+	# Containers around the run: title screen first, then game-over recap.
+	# Each frames the run so it doesn't feel like a demo that just starts and
+	# stops mid-air.
+	_build_title_overlay()
+	_build_gameover_overlay()
+	_show_title()
 
 
 func _prime_opening() -> void:
@@ -113,12 +139,14 @@ func _process(delta: float) -> void:
 
 	if GameConfig.status == GameConfig.STATUS_PLAYING:
 		_tick_playing(dt_ms)
-	else:
+		_fly_missles(dt_ms)
+		_move_pillars(dt_ms)
+		_move_targets(dt_ms)
+	elif GameConfig.status == GameConfig.STATUS_GAME_OVER:
 		_tick_falling()
+	# STATUS_TITLE: world is frozen — the airplane idles in place. Vfx still
+	# decay below so any leftover smoke fades.
 
-	_fly_missles(dt_ms)
-	_move_pillars(dt_ms)
-	_move_targets(dt_ms)
 	_move_structures(dt_ms)
 	_update_white_spheres(dt_ms)
 	_update_particles(dt_ms)
@@ -128,6 +156,17 @@ func _process(delta: float) -> void:
 	_update_camera()
 	_update_aim_overlay()
 	_update_hud()
+	_update_tap_pulse()
+
+
+## Subtle pulse on the "TAP TO START" / "TAP TO RETRY" labels so the player
+## sees they're waiting for input.
+func _update_tap_pulse() -> void:
+	var a: float = 0.55 + 0.45 * absf(sin(Time.get_ticks_msec() * 0.003))
+	if _tap_label != null and _tap_label.visible:
+		_tap_label.modulate.a = a
+	if _gameover_tap != null and _gameover_tap.visible:
+		_gameover_tap.modulate.a = a
 
 
 func _tick_playing(dt_ms: float) -> void:
@@ -652,6 +691,10 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> void:
 	var prev_tier: int = GameConfig.combo_tier
 	pl.shatter()
 	GameConfig.register_core_hit()
+	if GameConfig.combo > _max_combo_run:
+		_max_combo_run = GameConfig.combo
+	if GameConfig.combo_tier > _max_tier_run:
+		_max_tier_run = GameConfig.combo_tier
 
 	var pos: Vector3 = pl.core_world_pos()
 	_spawn_explosion(pos, SmokeBurstScript.Kind.PILLAR_BREAK, float(m.tier + 1))
@@ -681,6 +724,8 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 		flash_overlay.flash(0.22, 0.10)
 		return
 
+	# Giant defeated: bump the run-stats counter for the recap screen.
+	_giants_killed_run += 1
 	# Finish: full showpiece combo — a cluster of big plumes across the giant so
 	# it reads as a screen-erasing detonation.
 	time_scaler.request_slowmo(GameConfig.slowmo_giant_scale, GameConfig.slowmo_giant_duration)
@@ -850,10 +895,133 @@ func _update_hud() -> void:
 
 func _on_game_over() -> void:
 	var traveled: int = int(GameConfig.distance)
-	if traveled > GameConfig.best_distance:
+	var old_best: int = GameConfig.best_distance
+	var is_new_best: bool = traveled > old_best
+	if is_new_best:
 		GameConfig.best_distance = traveled
 		var SaveDataScript := preload("res://scripts/SaveData.gd")
 		SaveDataScript.save_best(GameConfig.best_distance)
+	# Brief delay so the death juice (shake / falling plane) reads before the
+	# recap screen swoops in.
+	get_tree().create_timer(1.2).timeout.connect(func(): _show_gameover_screen(is_new_best))
+
+
+# ----- Title / Game-over overlays --------------------------------------------
+
+func _build_title_overlay() -> void:
+	_title_layer = ColorRect.new()
+	_title_layer.anchor_right = 1.0
+	_title_layer.anchor_bottom = 1.0
+	_title_layer.color = Color(0.0, 0.0, 0.0, 0.45)
+	_title_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_title_layer)
+
+	var center := CenterContainer.new()
+	center.anchor_right = 1.0
+	center.anchor_bottom = 1.0
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_title_layer.add_child(center)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 14)
+	center.add_child(vbox)
+
+	var title := _make_centered_label("AVIATOR TO SKY", 56, Color(1, 1, 1, 1))
+	vbox.add_child(title)
+	var sub := _make_centered_label("MONOLITH GAUNTLET", 20, Color(1, 1, 1, 0.65))
+	vbox.add_child(sub)
+
+	var spacer := Control.new()
+	spacer.custom_minimum_size = Vector2(0, 60)
+	vbox.add_child(spacer)
+
+	_tap_label = _make_centered_label("TAP TO START", 28, Color(1, 1, 1, 1))
+	vbox.add_child(_tap_label)
+
+
+func _build_gameover_overlay() -> void:
+	_gameover_layer = ColorRect.new()
+	_gameover_layer.anchor_right = 1.0
+	_gameover_layer.anchor_bottom = 1.0
+	_gameover_layer.color = Color(0.0, 0.0, 0.0, 0.55)
+	_gameover_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_gameover_layer.visible = false
+	hud.add_child(_gameover_layer)
+
+	var center := CenterContainer.new()
+	center.anchor_right = 1.0
+	center.anchor_bottom = 1.0
+	center.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_gameover_layer.add_child(center)
+
+	var vbox := VBoxContainer.new()
+	vbox.add_theme_constant_override("separation", 10)
+	center.add_child(vbox)
+
+	_gameover_title = _make_centered_label("RUN OVER", 48, Color(1, 1, 1, 1))
+	vbox.add_child(_gameover_title)
+
+	var spacer1 := Control.new()
+	spacer1.custom_minimum_size = Vector2(0, 18)
+	vbox.add_child(spacer1)
+
+	_gameover_dist   = _make_centered_label("", 22, Color(1, 1, 1, 0.92))
+	_gameover_best   = _make_centered_label("", 18, Color(1, 1, 1, 0.7))
+	_gameover_combo  = _make_centered_label("", 20, Color(1, 1, 1, 0.85))
+	_gameover_giants = _make_centered_label("", 20, Color(1, 1, 1, 0.85))
+	vbox.add_child(_gameover_dist)
+	vbox.add_child(_gameover_best)
+	vbox.add_child(_gameover_combo)
+	vbox.add_child(_gameover_giants)
+
+	var spacer2 := Control.new()
+	spacer2.custom_minimum_size = Vector2(0, 28)
+	vbox.add_child(spacer2)
+
+	_gameover_tap = _make_centered_label("TAP TO RETRY", 26, Color(1, 1, 1, 1))
+	vbox.add_child(_gameover_tap)
+
+
+func _make_centered_label(text: String, size: int, color: Color) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", color)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	return l
+
+
+func _show_title() -> void:
+	GameConfig.status = GameConfig.STATUS_TITLE
+	_title_layer.visible = true
+	_gameover_layer.visible = false
+	_set_play_hud_visible(false)
+
+
+func _start_game() -> void:
+	GameConfig.status = GameConfig.STATUS_PLAYING
+	_title_layer.visible = false
+	_gameover_layer.visible = false
+	_set_play_hud_visible(true)
+
+
+func _show_gameover_screen(is_new_best: bool) -> void:
+	_gameover_title.text = "NEW BEST!" if is_new_best else "RUN OVER"
+	_gameover_title.add_theme_color_override("font_color",
+		Color(1.0, 0.85, 0.35, 1.0) if is_new_best else Color(1, 1, 1, 1))
+	_gameover_dist.text   = "Distance:  %d" % int(GameConfig.distance)
+	_gameover_best.text   = "Best:  %d" % GameConfig.best_distance
+	_gameover_combo.text  = "Max Combo:  x%d  (T%d)" % [_max_combo_run, _max_tier_run]
+	_gameover_giants.text = "Giants Defeated:  %d" % _giants_killed_run
+	_gameover_layer.visible = true
+	_set_play_hud_visible(false)
+
+
+func _set_play_hud_visible(v: bool) -> void:
+	distance_label.visible = v
+	best_label.visible = v
+	energy_bar.visible = v
+	status_label.visible = v
 
 
 # ----- Input -----------------------------------------------------------------
@@ -861,9 +1029,22 @@ func _on_game_over() -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	var left_click: bool = (event is InputEventMouseButton and event.pressed
 		and event.button_index == MOUSE_BUTTON_LEFT)
-	if event.is_action_pressed("fire_missle") or left_click:
-		_fire_missle()
-	elif event.is_action_pressed("reset_game"):
+	var primary: bool = left_click or event.is_action_pressed("fire_missle")
+
+	if event.is_action_pressed("reset_game"):
 		get_tree().reload_current_scene()
-	elif event.is_action_pressed("quit_game"):
+		return
+	if event.is_action_pressed("quit_game"):
 		get_tree().quit()
+		return
+
+	if not primary:
+		return
+
+	match GameConfig.status:
+		GameConfig.STATUS_TITLE:
+			_start_game()
+		GameConfig.STATUS_PLAYING:
+			_fire_missle()
+		GameConfig.STATUS_GAME_OVER:
+			get_tree().reload_current_scene()
