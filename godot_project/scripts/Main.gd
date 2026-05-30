@@ -509,49 +509,23 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 
 # ----- Aim / lock-on ---------------------------------------------------------
 
-## The thing the player is AIMING at — closest target (giant or hittable pillar
-## core) to the mouse cursor's world position in (y, z). Plain "nearest by x"
-## was confusing: an 11-o'clock target was ignored if anything was straight
-## ahead. Aim-based selection makes the lock-on feel intentional.
+## The thing the player is pointing at: the giant if it has loomed in, else the
+## nearest breakable pillar core ahead (by x).
 func _pick_candidate() -> Node3D:
-	var aim: Vector3 = _get_world_cursor()
-	var best: Node3D = null
-	var best_score: float = INF
-
 	for g in _targets:
-		if not g.is_giant:
-			continue
-		if g.position.x > GIANT_VULNERABLE_X or g.position.x <= airplane.position.x:
-			continue
-		var s: float = _aim_score(g.position, aim, true)
-		if s < best_score:
-			best_score = s
-			best = g
-
+		if g.is_giant and g.position.x <= GIANT_VULNERABLE_X and g.position.x > airplane.position.x:
+			return g
+	var best: Node3D = null
+	var best_x: float = INF
 	for pl in _pillars:
 		if not pl.is_core_hittable():
 			continue
 		if pl.global_position.x <= airplane.position.x:
 			continue
-		var s2: float = _aim_score(pl.core_world_pos(), aim, false)
-		if s2 < best_score:
-			best_score = s2
+		if pl.global_position.x < best_x:
+			best_x = pl.global_position.x
 			best = pl
-
 	return best
-
-
-## Lower = better aim match. (y, z) distance from cursor + a small forward
-## penalty so closer targets win when two are at similar aim angle. Returns
-## INF when the target is outside the acceptance window (giants are wider).
-func _aim_score(target_pos: Vector3, aim_world: Vector3, is_giant: bool) -> float:
-	var dy: float = target_pos.y - aim_world.y
-	var dz: float = target_pos.z - aim_world.z
-	var d: float = sqrt(dy * dy + dz * dz)
-	var max_d: float = 500.0 if is_giant else 240.0
-	if d > max_d:
-		return INF
-	return d + (target_pos.x - airplane.position.x) * 0.02
 
 
 func _is_giant_node(node: Node3D) -> bool:
@@ -568,18 +542,19 @@ func _aim_radius(node: Node3D) -> float:
 	return 170.0 if _is_giant_node(node) else 32.0
 
 
-## Reticle goes red+pulsing ("locked") when the cursor is RIGHT ON the candidate
-## — not just within some plane-distance. Driven by the same aim cursor as the
-## picker so feedback matches behaviour.
+func _lock_window(node: Node3D) -> float:
+	return GameConfig.missile_lock_radius * (14.0 if _is_giant_node(node) else 1.0)
+
+
+## "Locked" = the plane is positioned close enough to the candidate (y, z) that
+## a fired missile will land. Reticle goes red+pulsing when locked.
 func _is_locked(node: Node3D) -> bool:
 	if node == null or not is_instance_valid(node):
 		return false
-	var aim: Vector3 = _get_world_cursor()
 	var ap: Vector3 = _aim_pos(node)
-	var dy: float = ap.y - aim.y
-	var dz: float = ap.z - aim.z
-	var win: float = 110.0 if _is_giant_node(node) else 45.0
-	return sqrt(dy * dy + dz * dz) < win
+	var dy: float = ap.y - airplane.position.y
+	var dz: float = ap.z - airplane.position.z
+	return sqrt(dy * dy + dz * dz) < _lock_window(node)
 
 
 ## Homing target for a fired missile: the candidate's aim node (a pillar core
