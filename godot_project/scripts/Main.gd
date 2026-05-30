@@ -67,9 +67,8 @@ func _ready() -> void:
 
 	_update_camera()
 
-	# Prime the depth chain so frame 1 isn't an empty plain.
-	for k in 5:
-		_build_structures()
+	# No background scenery — the world is an empty concrete stage so each
+	# pillar emergence is the only event. Theatrical, image.png-clean.
 	_prime_opening()
 
 
@@ -111,9 +110,6 @@ func _process(delta: float) -> void:
 
 func _tick_playing(dt_ms: float) -> void:
 	var delta_s: float = dt_ms / 1000.0
-
-	if floori(GameConfig.distance) % 5 == 0:
-		_build_structures()
 
 	var d_int := floori(GameConfig.distance)
 
