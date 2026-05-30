@@ -102,6 +102,12 @@ func _prime_opening() -> void:
 func _process(delta: float) -> void:
 	var dt_ms: float = delta * 1000.0 * GameConfig.time_scale
 
+	# Pillars can queue_free themselves (after the shatter-collapse tween) so
+	# clean up stale references ONCE here before any system iterates _pillars
+	# this frame. Without this, _update_camera / _fly_missles / etc. can poke
+	# a freed node.
+	_filter_invalid_pillars()
+
 	airplane.set_mouse_pos(_get_normalized_mouse())
 	airplane.set_world_target(_get_world_cursor())
 
@@ -358,6 +364,16 @@ func _spawn_pillar(kind: int, breakable: bool, x: float, z: float, from_ceiling:
 	add_child(p)
 	_pillars.append(p)
 	p.position = Vector3(x, p.position.y, z)
+
+
+## Drop any freed pillar references so the rest of the frame only ever
+## iterates valid nodes. Called at the top of _process.
+func _filter_invalid_pillars() -> void:
+	var i: int = _pillars.size() - 1
+	while i >= 0:
+		if not is_instance_valid(_pillars[i]):
+			_pillars.remove_at(i)
+		i -= 1
 
 
 func _move_pillars(dt_ms: float) -> void:
