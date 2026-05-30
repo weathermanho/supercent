@@ -787,7 +787,8 @@ func _cleanup(indices: Array[int], arr: Array[Node3D]) -> void:
 	for k in range(indices.size() - 1, -1, -1):
 		var idx := indices[k]
 		var n := arr[idx]
-		n.queue_free()
+		if is_instance_valid(n):
+			n.queue_free()
 		arr.remove_at(idx)
 
 
