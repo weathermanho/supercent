@@ -197,14 +197,16 @@ func _update_camera() -> void:
 	_cam_pull += (want_pull - _cam_pull) * 0.05
 	_cam_lift += (want_lift - _cam_lift) * 0.05
 
-	var cam_y: float = GameConfig.plane_default_height \
-		+ (p.y - GameConfig.plane_default_height) * 0.6 + 55.0 + _cam_lift
-	# Camera only PARTIALLY follows the plane's z so it actually swerves
-	# left/right on screen instead of being pinned to centre. 0.0 = fully fixed
-	# (max swerve, plane may exit frame at limits), 1.0 = old pinned behaviour.
-	var cam_z: float = p.z * 0.35
+	# Camera only PARTIALLY follows the plane's y AND z so the plane actually
+	# *moves* on screen (up/down/left/right) instead of being pinned to centre.
+	# 0.0 = fully fixed (max swerve, plane may exit frame), 1.0 = old pinned.
+	const FOLLOW := 0.35
+	var dy: float = (p.y - GameConfig.plane_default_height) * FOLLOW
+	var cam_y: float = GameConfig.plane_default_height + 55.0 + _cam_lift + dy
+	var look_y: float = GameConfig.plane_default_height - 10.0 + dy
+	var cam_z: float = p.z * FOLLOW
 	camera.position = Vector3(PLANE_BASE_X - 230.0 - _cam_pull, cam_y, cam_z)
-	camera.look_at(Vector3(PLANE_BASE_X + 1400.0, p.y - 10.0, cam_z), Vector3.UP)
+	camera.look_at(Vector3(PLANE_BASE_X + 1400.0, look_y, cam_z), Vector3.UP)
 	shaker.refresh_base()
 
 

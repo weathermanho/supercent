@@ -246,13 +246,16 @@ func is_core_hittable() -> bool:
 	return breakable and core_alive and _phase == Phase.RISEN
 
 
-## Called when a missile destroys the core. Triggers collapse; pillar should be
-## removed by Main after this (it returns to a non-hazard DEAD state immediately).
+## Called when a missile destroys the core. Triggers collapse; pillar enters
+## DEAD state immediately. The core node is FREED so any in-flight missiles
+## that were homing on it lose their target (is_instance_valid -> false) and
+## fly straight instead of orbiting the collapsing husk.
 func shatter() -> void:
 	core_alive = false
 	_phase = Phase.DEAD
 	if _core != null:
-		_core.visible = false
+		_core.queue_free()
+		_core = null
 	_tele.visible = false
 	# Quick collapse: sink + fade so the path visibly opens.
 	var tw := create_tween()
