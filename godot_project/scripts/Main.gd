@@ -181,8 +181,12 @@ func _update_camera() -> void:
 
 	var cam_y: float = GameConfig.plane_default_height \
 		+ (p.y - GameConfig.plane_default_height) * 0.6 + 55.0 + _cam_lift
-	camera.position = Vector3(PLANE_BASE_X - 230.0 - _cam_pull, cam_y, p.z)
-	camera.look_at(Vector3(PLANE_BASE_X + 1400.0, p.y - 10.0, p.z), Vector3.UP)
+	# Camera only PARTIALLY follows the plane's z so it actually swerves
+	# left/right on screen instead of being pinned to centre. 0.0 = fully fixed
+	# (max swerve, plane may exit frame at limits), 1.0 = old pinned behaviour.
+	var cam_z: float = p.z * 0.35
+	camera.position = Vector3(PLANE_BASE_X - 230.0 - _cam_pull, cam_y, cam_z)
+	camera.look_at(Vector3(PLANE_BASE_X + 1400.0, p.y - 10.0, cam_z), Vector3.UP)
 	shaker.refresh_base()
 
 
@@ -213,7 +217,7 @@ func _construct_pillar_wave() -> void:
 			_spawn_normal_cluster(4 + int(randf() * 2.0))
 			_spawn_spike_line(2 + int(randf() * 2.0))
 		elif roll < 0.7:
-			_spawn_pillar(PillarScript.Kind.FAKE, randf() < 0.4, SPAWN_X, -80.0 + randf() * 160.0)
+			_spawn_pillar(PillarScript.Kind.FAKE, randf() < 0.4, SPAWN_X, -80.0 + randf() * 160.0, randf() < 0.3)
 			_spawn_normal_cluster(4)
 		else:
 			_spawn_colossus(true, SPAWN_X, 0.0)
@@ -221,7 +225,9 @@ func _construct_pillar_wave() -> void:
 
 
 ## A row of NORMAL pillars across z, deliberately leaving one open lane so the
-## formation is always passable (never an unfair wall).
+## formation is always passable (never an unfair wall). Each member rolls its
+## own orientation (35% hang from ceiling) so the row mixes standing + hanging
+## monoliths — vertical dodge variety.
 func _spawn_normal_cluster(count: int) -> void:
 	var lanes: Array[float] = [-220.0, -130.0, -45.0, 45.0, 130.0, 220.0]
 	lanes.shuffle()
@@ -230,29 +236,32 @@ func _spawn_normal_cluster(count: int) -> void:
 		if i == open_lane:
 			continue
 		var breakable: bool = randf() < 0.55
-		_spawn_pillar(PillarScript.Kind.NORMAL, breakable, SPAWN_X + randf() * 240.0, lanes[i])
+		var from_ceiling: bool = randf() < 0.35
+		_spawn_pillar(PillarScript.Kind.NORMAL, breakable, SPAWN_X + randf() * 240.0, lanes[i], from_ceiling)
 
 
 func _spawn_spike_line(count: int) -> void:
 	for i in count:
 		var z: float = -200.0 + randf() * 400.0
-		_spawn_pillar(PillarScript.Kind.SPIKE, randf() < 0.7, SPAWN_X + i * 220.0, z)
+		var from_ceiling: bool = randf() < 0.35   # stalactite vs spike
+		_spawn_pillar(PillarScript.Kind.SPIKE, randf() < 0.7, SPAWN_X + i * 220.0, z, from_ceiling)
 
 
 ## Colossi loom in a SIDE lane (never the centre) so they overwhelm the frame
 ## without burying the chase camera in a dead-centre wall. `side`: -1/+1 forces
-## a side, 0 picks randomly.
+## a side, 0 picks randomly. ~30% of colossi HANG from the ceiling (image.png).
 func _spawn_colossus(breakable: bool, x: float, side: float) -> void:
 	var s: float = side
 	if absf(s) < 0.5:
 		s = -1.0 if randf() < 0.5 else 1.0
 	var z: float = s * (340.0 + randf() * 130.0)
-	_spawn_pillar(PillarScript.Kind.COLOSSUS, breakable, x, z)
+	var from_ceiling: bool = randf() < 0.3
+	_spawn_pillar(PillarScript.Kind.COLOSSUS, breakable, x, z, from_ceiling)
 
 
-func _spawn_pillar(kind: int, breakable: bool, x: float, z: float) -> void:
+func _spawn_pillar(kind: int, breakable: bool, x: float, z: float, from_ceiling: bool = false) -> void:
 	var p: Node3D = PillarScript.new()
-	p.configure(kind, breakable)
+	p.configure(kind, breakable, from_ceiling)
 	add_child(p)
 	_pillars.append(p)
 	p.position = Vector3(x, p.position.y, z)
@@ -272,11 +281,13 @@ func _move_pillars(dt_ms: float) -> void:
 				shaker.shake(GameConfig.shake_hit_intensity * 1.1, 0.25)
 			_spawn_dust(Vector3(pl.global_position.x, PillarScript.GROUND_Y + 6.0, pl.global_position.z), pl.w)
 
-		# Plane crash.
+		# Plane crash — vertical check uses both top AND bottom so hanging
+		# ceiling pillars (high up) don't false-trigger.
 		if alive and pl.is_solid_hazard() and GameConfig.crash_iframes <= 0.0:
 			if absf(pl.global_position.x - airplane.position.x) < pl.w * 0.5 + 28.0 \
 			and absf(pl.global_position.z - airplane.position.z) < pl.d * 0.5 + 28.0 \
-			and airplane.position.y < pl.emerged_top_y + 26.0:
+			and airplane.position.y < pl.emerged_top_y + 26.0 \
+			and airplane.position.y > pl.emerged_bottom_y - 26.0:
 				_on_crash(pl)
 
 		if not alive:
@@ -298,7 +309,7 @@ func _on_crash(pl: Node3D) -> void:
 	shaker.shake(GameConfig.shake_giant_intensity * 0.7, 0.35)
 	time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
 	flash_overlay.flash(0.35, 0.12)   # warm/red damage flash
-	_make_white_spheres(airplane.position, false)
+	_spawn_explosion(airplane.position, SmokeBurstScript.Kind.PLANE_HIT, 1.0)
 
 	if GameConfig.hp <= 0:
 		GameConfig.status = GameConfig.STATUS_GAME_OVER
@@ -494,8 +505,7 @@ func _fly_missles(dt_ms: float) -> void:
 					_on_core_hit(pl, m)
 					broke = true
 				else:
-					_make_white_spheres(m.position, false)
-					_spawn_shockwave(m.position, 8.0, 0.35)
+					_spawn_explosion(m.position, SmokeBurstScript.Kind.BLOCK_SPARK, 1.0)
 					shaker.shake(GameConfig.shake_hit_intensity * 0.6, 0.08)
 					blocked = true
 				break
@@ -520,7 +530,7 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> void:
 	GameConfig.register_core_hit()
 
 	var pos: Vector3 = pl.core_world_pos()
-	_spawn_explosion(pos, m.tier)
+	_spawn_explosion(pos, SmokeBurstScript.Kind.PILLAR_BREAK, float(m.tier + 1))
 
 	# Tier-up celebration.
 	if GameConfig.combo_tier > prev_tier:
@@ -534,16 +544,14 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> void:
 
 func _on_giant_chip(g: Node3D) -> void:
 	# Missile too weak: visible "bounce" so the player learns to grow first.
-	_spawn_particles_at(g.position, 14, 1, 7)
-	_spawn_shockwave(g.position, 10.0, 0.3)
+	_spawn_explosion(g.position, SmokeBurstScript.Kind.GIANT_CHIP, 1.0)
 	shaker.shake(GameConfig.shake_hit_intensity * 0.8, 0.1)
 	flash_overlay.flash(0.12, 0.06)
 
 
 func _on_giant_hit(g: Node3D, killed: bool) -> void:
 	if not killed:
-		_spawn_explosion(g.position, 2)
-		_spawn_particles_at(g.position, 25, 1, 9)
+		_spawn_explosion(g.position, SmokeBurstScript.Kind.GIANT_HIT, 2.0)
 		shaker.shake(GameConfig.shake_hit_intensity * 1.8, GameConfig.shake_hit_duration * 1.3)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
 		flash_overlay.flash(0.22, 0.10)
@@ -556,9 +564,8 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 	flash_overlay.flash(0.45, 0.3, false)
 	for k in 5:
 		var off := Vector3((randf() - 0.5) * 220.0, (randf() - 0.5) * 260.0, (randf() - 0.5) * 160.0)
-		_spawn_explosion(g.position + off, 4)
+		_spawn_explosion(g.position + off, SmokeBurstScript.Kind.GIANT_FINISH, 3.0 + randf())
 	_spawn_shockwave(g.position, 60.0, 1.0)
-	_make_white_spheres(g.position, true)
 
 	var idx: int = _targets.find(g)
 	if idx >= 0:
@@ -578,25 +585,24 @@ func _segment_point_distance(a: Vector3, b: Vector3, p: Vector3) -> float:
 
 # ----- Explosions / particles ------------------------------------------------
 
-## Unified destruction burst, scaled by `power` (≈ missile tier 0..4). Layered:
-## premium smoke plume + fire flash + concrete debris + shockwave.
-func _spawn_explosion(pos: Vector3, power: int) -> void:
-	var p: float = float(power)
+## Unified destruction burst. `kind` chooses the recipe (pillar shatter, giant
+## chip, giant finish, block spark, plane scrape…); `power` modulates scale
+## inside the recipe.
+func _spawn_explosion(pos: Vector3, kind: int, power: float = 1.0) -> void:
 	var smoke: Node3D = SmokeBurstScript.new()
-	smoke.power = p
+	smoke.kind = kind
+	smoke.power = power
 	add_child(smoke)
 	smoke.global_position = pos
 	_smokes.append(smoke)
-
-	_spawn_shockwave(pos, 10.0 + p * 8.0, 0.4 + p * 0.08)
-	_spawn_particles_at(pos, int(16 + p * 10.0), 1, int(7 + p * 2.0))
+	_spawn_shockwave(pos, 10.0 + power * 8.0, 0.4 + power * 0.08)
 
 
 func _spawn_dust(pos: Vector3, footprint: float) -> void:
 	# Low ground dust when a pillar erupts.
 	var smoke: Node3D = SmokeBurstScript.new()
+	smoke.kind = SmokeBurstScript.Kind.GROUND_DUST
 	smoke.power = clampf(footprint / 120.0, 0.5, 3.0)
-	smoke.ground_burst = true
 	add_child(smoke)
 	smoke.global_position = pos
 	_smokes.append(smoke)

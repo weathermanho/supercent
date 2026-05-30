@@ -16,10 +16,18 @@ class_name Pillar
 enum Kind { COLOSSUS, SPIKE, NORMAL, FAKE }
 enum Phase { PRE, TELEGRAPH, RISING, RISEN, DEAD }
 
-const GROUND_Y := 0.0
+# Match the visible Atmosphere floor (the plane mesh at y = -120) so risen
+# pillars actually stand on the ground instead of floating above it.
+const GROUND_Y := -120.0
+## How high "the ceiling" is — pillars marked `from_ceiling` descend from here.
+const CEILING_Y := 460.0
 
 var kind: int = Kind.NORMAL
 var breakable: bool = false
+## When true, the pillar HANGS from the ceiling and descends into the play
+## volume instead of rising from the floor. Adds vertical dodge variety
+## (image.png hanging-monolith style).
+var from_ceiling: bool = false
 
 # Footprint / height (full extents).
 var w: float = 90.0
@@ -45,46 +53,60 @@ var _tele_mat: StandardMaterial3D
 var _fake_done: bool = false
 var _pending_erupt: bool = false
 
-# Cached for Main's collision query: half-extents of the *emerged* part.
-var emerged_top_y: float = GROUND_Y   # world y of the current top of the pillar
+# Cached for Main's collision query: current world-y of the emerged top and
+# bottom (handles both ground-up and ceiling-down orientations).
+var emerged_top_y: float = GROUND_Y
+var emerged_bottom_y: float = GROUND_Y
 
 
-func configure(kind_: int, breakable_: bool) -> void:
+func configure(kind_: int, breakable_: bool, from_ceiling_: bool = false) -> void:
 	kind = kind_
 	breakable = breakable_
+	from_ceiling = from_ceiling_
 
 	match kind:
 		Kind.COLOSSUS:
-			w = 170.0 + randf() * 110.0
-			d = 170.0 + randf() * 110.0
-			h = 500.0 + randf() * 240.0
+			w = 170.0 + randf() * 130.0
+			d = 170.0 + randf() * 130.0
+			h = 460.0 + randf() * 280.0
 			telegraph_time = 0.9
 			rise_time = 1.6
 			telegraph_x = 2200.0
 		Kind.SPIKE:
-			w = 42.0 + randf() * 16.0
-			d = 42.0 + randf() * 16.0
-			h = 340.0 + randf() * 120.0
+			w = 38.0 + randf() * 22.0
+			d = 38.0 + randf() * 22.0
+			h = 300.0 + randf() * 180.0
 			telegraph_time = 0.32
 			rise_time = 0.22
 			telegraph_x = 1500.0
 		Kind.FAKE:
-			w = 80.0 + randf() * 50.0
-			d = 80.0 + randf() * 50.0
-			h = 240.0 + randf() * 120.0
+			w = 70.0 + randf() * 80.0
+			d = 70.0 + randf() * 80.0
+			h = 200.0 + randf() * 200.0
 			telegraph_time = 0.5
 			rise_time = 0.7
 			telegraph_x = 1800.0
-		_:  # NORMAL / cluster member
-			w = 70.0 + randf() * 60.0
-			d = 70.0 + randf() * 60.0
-			h = 220.0 + randf() * 140.0
+		_:  # NORMAL / cluster member — WIDE range so some are flyable-over
+			w = 50.0 + randf() * 150.0
+			d = 50.0 + randf() * 150.0
+			h = 130.0 + randf() * 280.0
 			telegraph_time = 0.55
 			rise_time = 0.55
 			telegraph_x = 1800.0
 
-	_y_risen = GROUND_Y + h * 0.5
-	_y_hidden = GROUND_Y - h * 0.5 - 40.0
+	# Cap ceiling pillars so the descended bottom can't punch through the floor.
+	if from_ceiling:
+		var max_h: float = CEILING_Y - GROUND_Y - 40.0
+		h = minf(h, max_h)
+
+	if from_ceiling:
+		# Risen = hanging from the ceiling, top at CEILING_Y, bottom at CEILING_Y - h.
+		_y_risen = CEILING_Y - h * 0.5
+		_y_hidden = CEILING_Y + h * 0.5 + 40.0   # parked above the ceiling
+	else:
+		# Risen = standing on the floor, bottom at GROUND_Y, top at GROUND_Y + h.
+		_y_risen = GROUND_Y + h * 0.5
+		_y_hidden = GROUND_Y - h * 0.5 - 40.0
 
 
 func _ready() -> void:
@@ -174,6 +196,7 @@ func step(dt_ms: float, plane_x: float) -> bool:
 			pass
 
 	emerged_top_y = position.y + h * 0.5
+	emerged_bottom_y = position.y - h * 0.5
 	return position.x > -1200.0
 
 
@@ -182,6 +205,8 @@ func step(dt_ms: float, plane_x: float) -> bool:
 func is_solid_hazard() -> bool:
 	if _phase == Phase.DEAD:
 		return false
+	if from_ceiling:
+		return emerged_bottom_y < CEILING_Y - 40.0
 	return emerged_top_y > GROUND_Y + 40.0
 
 
@@ -207,10 +232,9 @@ func core_world_pos() -> Vector3:
 	return _core.global_position
 
 
-## Core is shootable once the pillar has risen enough to expose it.
+## Core is shootable once the pillar is fully out (and breakable, of course).
 func is_core_hittable() -> bool:
-	return breakable and core_alive and _phase != Phase.DEAD \
-		and emerged_top_y > GameConfig.plane_default_height - 60.0
+	return breakable and core_alive and _phase == Phase.RISEN
 
 
 ## Called when a missile destroys the core. Triggers collapse; pillar should be
