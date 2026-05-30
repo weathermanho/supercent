@@ -114,9 +114,12 @@ func _ready() -> void:
 
 	# Concrete body. Cool dark grey for unbreakable; a lighter, slightly warm
 	# concrete for breakable so even before the red core reads the silhouette
-	# hints "target" (image.png monolith tone).
+	# hints "target" (image.png monolith tone). Hidden until RISING starts so
+	# no part of the pillar is visible in advance — only the ground telegraph
+	# marker warns the player something's coming.
 	var body_color: Color = Color8(134, 126, 118) if breakable else Color8(94, 97, 104)
 	_body = BoxFactory.make_box(w, h, d, body_color)
+	_body.visible = false
 	add_child(_body)
 
 	if breakable:
@@ -134,6 +137,7 @@ func _ready() -> void:
 		_core_mat.emission = GameColors.RED
 		_core_mat.emission_energy_multiplier = 3.0
 		_core.set_surface_override_material(0, _core_mat)
+		_core.visible = false
 		add_child(_core)
 
 	# Telegraph footprint marker (flat, on the ground). Hidden until TELEGRAPH.
@@ -174,6 +178,11 @@ func step(dt_ms: float, plane_x: float) -> bool:
 				_phase = Phase.RISING
 				_t = 0.0
 				_pending_erupt = true
+				# Materialize the pillar at the moment it begins to move so
+				# nothing of it has been visible before this frame.
+				_body.visible = true
+				if _core != null:
+					_core.visible = true
 		Phase.RISING:
 			_t += delta
 			var u: float = clampf(_t / rise_time, 0.0, 1.0)
