@@ -249,7 +249,9 @@ func is_core_hittable() -> bool:
 ## Called when a missile destroys the core. Triggers collapse; pillar enters
 ## DEAD state immediately. The core node is FREED so any in-flight missiles
 ## that were homing on it lose their target (is_instance_valid -> false) and
-## fly straight instead of orbiting the collapsing husk.
+## fly straight instead of orbiting the collapsing husk. After the collapse
+## animation the pillar queue_frees itself so no thin "pancake" husk lingers
+## on the floor scrolling past — Main filters invalid pillars next frame.
 func shatter() -> void:
 	core_alive = false
 	_phase = Phase.DEAD
@@ -257,11 +259,12 @@ func shatter() -> void:
 		_core.queue_free()
 		_core = null
 	_tele.visible = false
-	# Quick collapse: sink + fade so the path visibly opens.
 	var tw := create_tween()
 	tw.set_parallel(true)
 	tw.tween_property(self, "position:y", position.y - h * 0.6, 0.35)
 	tw.tween_property(self, "scale", Vector3(1.0, 0.05, 1.0), 0.35)
+	# After the parallel collapse, free the whole pillar.
+	tw.chain().tween_callback(queue_free)
 
 
 func _pulse_telegraph() -> void:

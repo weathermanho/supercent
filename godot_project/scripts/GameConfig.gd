@@ -25,7 +25,7 @@ var distance_for_level_update: int = 1000
 
 var plane_scale: float = 0.5
 var plane_default_height: float = 100.0
-var plane_amp_height: float = 100.0
+var plane_amp_height: float = 160.0   # vertical range up/down (was 100)
 var plane_low_height: float = 80.0
 var plane_amp_width: float = 75.0
 var plane_move_sensitivity: float = 0.0038

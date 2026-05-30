@@ -197,16 +197,17 @@ func _update_camera() -> void:
 	_cam_pull += (want_pull - _cam_pull) * 0.05
 	_cam_lift += (want_lift - _cam_lift) * 0.05
 
-	# Camera only PARTIALLY follows the plane's y AND z so the plane actually
-	# *moves* on screen (up/down/left/right) instead of being pinned to centre.
-	# 0.0 = fully fixed (max swerve, plane may exit frame), 1.0 = old pinned.
-	const FOLLOW := 0.35
-	var dy: float = (p.y - GameConfig.plane_default_height) * FOLLOW
-	var cam_y: float = GameConfig.plane_default_height + 55.0 + _cam_lift + dy
-	var look_y: float = GameConfig.plane_default_height - 10.0 + dy
-	var cam_z: float = p.z * FOLLOW
+	# Camera barely tracks the plane (Y and Z) and look_at is FIXED — so the
+	# plane really moves up/down/left/right on screen instead of being pinned
+	# to centre. Camera tilts naturally with plane y because cam_y moves but
+	# look_y doesn't.
+	const CAM_FOLLOW := 0.15
+	var cam_y: float = GameConfig.plane_default_height + 55.0 + _cam_lift \
+		+ (p.y - GameConfig.plane_default_height) * CAM_FOLLOW
+	var look_y: float = GameConfig.plane_default_height - 10.0
+	var cam_z: float = p.z * CAM_FOLLOW
 	camera.position = Vector3(PLANE_BASE_X - 230.0 - _cam_pull, cam_y, cam_z)
-	camera.look_at(Vector3(PLANE_BASE_X + 1400.0, look_y, cam_z), Vector3.UP)
+	camera.look_at(Vector3(PLANE_BASE_X + 1400.0, look_y, 0.0), Vector3.UP)
 	shaker.refresh_base()
 
 
@@ -363,6 +364,11 @@ func _move_pillars(dt_ms: float) -> void:
 	var to_remove: Array[int] = []
 	for i in _pillars.size():
 		var pl := _pillars[i]
+		# A pillar may have queue_free'd itself after its shatter collapse —
+		# skip + collect for removal so we don't poke a freed node.
+		if not is_instance_valid(pl):
+			to_remove.append(i)
+			continue
 		var alive: bool = pl.step(dt_ms, airplane.position.x)
 
 		# Eruption punch — a spike snapping up kicks the camera.
