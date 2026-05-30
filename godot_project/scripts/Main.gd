@@ -509,21 +509,29 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 
 # ----- Aim / lock-on ---------------------------------------------------------
 
-## The thing the player is pointing at: the giant if it has loomed in, else the
-## nearest breakable pillar core ahead (by x).
+## "Plane = crosshair" model: the candidate is whatever hittable thing is
+## closest to the plane's current (y, z), with a mild forward-distance penalty
+## so closer pillars still win when proximity is similar. Move the plane
+## laterally inside a cluster → the candidate naturally shifts to the one
+## you're flying next to. A vulnerable giant takes priority over pillars.
 func _pick_candidate() -> Node3D:
 	for g in _targets:
 		if g.is_giant and g.position.x <= GIANT_VULNERABLE_X and g.position.x > airplane.position.x:
 			return g
 	var best: Node3D = null
-	var best_x: float = INF
+	var best_score: float = INF
 	for pl in _pillars:
 		if not pl.is_core_hittable():
 			continue
 		if pl.global_position.x <= airplane.position.x:
 			continue
-		if pl.global_position.x < best_x:
-			best_x = pl.global_position.x
+		var p: Vector3 = pl.core_world_pos()
+		var dy: float = p.y - airplane.position.y
+		var dz: float = p.z - airplane.position.z
+		var score: float = sqrt(dy * dy + dz * dz) \
+			+ (p.x - airplane.position.x) * 0.05
+		if score < best_score:
+			best_score = score
 			best = pl
 	return best
 
