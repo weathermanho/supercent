@@ -24,6 +24,16 @@ const PLANE_BASE_X := -100.0
 const GIANT_VULNERABLE_X := 950.0
 const SPAWN_X := 4000.0
 
+## Distances at which the run advances to the next stage. Sequential introduction
+## of mechanics so the visceral feel ("sweat + duck") isn't lost in cognitive
+## overload from the start:
+##   1) 0–30   WARMUP  — ground breakables only, learn shoot+combo
+##   2) 30–80  분별    — unbreakable ground pillars enter (must distinguish)
+##   3) 80–150 반사    — ground SPIKES + first giant looms
+##   4) 150–250 하늘   — CEILING pillars first appear + giant kill
+##   5) 250+    혼돈   — FAKES + everything mixed, full chaos
+const STAGE_BOUNDS := [30.0, 80.0, 150.0, 250.0]
+
 @onready var camera: Camera3D = $Camera3D
 @onready var shaker: Node = $Camera3D/Shaker
 @onready var time_scaler: Node = $TimeScaler
@@ -52,10 +62,15 @@ var _guide_overlay: Node3D
 var _cam_pull: float = 0.0
 var _cam_lift: float = 0.0
 
+## Currently-active stage (1..5). Watched in _tick_playing to fire one-shot
+## "stage advance" beats (e.g. the first ceiling pillar moment).
+var _current_stage: int = 1
+
 
 func _ready() -> void:
 	GameConfig.reset_to_defaults()
 	director.reset()
+	_current_stage = 1
 
 	airplane = AirPlaneScene.instantiate()
 	airplane.position = Vector3(PLANE_BASE_X, GameConfig.plane_default_height, 0.0)
@@ -73,14 +88,15 @@ func _ready() -> void:
 
 
 func _prime_opening() -> void:
-	# A welcoming opening: a couple of slow colossi looming ahead (awe) plus a
-	# staggered run of easy breakable normals so the player starts comboing
-	# immediately and the field already reads as a dense forest.
-	_spawn_colossus(false, 2600.0, -1.0)
-	_spawn_colossus(false, 3800.0, 1.0)
-	for i in 7:
+	# Stage 1 (워밍업) seed: two GROUND side-lane colossi for scale presence
+	# (purely framing — they're far in z, not in the dodge lane) plus a few
+	# easy breakable normals so the player learns "shoot red core, combo grows
+	# missile" in the first 2 seconds. No ceiling, no unbreakable, no spike.
+	_spawn_colossus(false, 2600.0, -1.0, false)
+	_spawn_colossus(false, 3800.0, 1.0, false)
+	for i in 4:
 		var z: float = -150.0 + randf() * 300.0
-		_spawn_pillar(PillarScript.Kind.NORMAL, true, 1300.0 + i * 520.0, z)
+		_spawn_pillar(PillarScript.Kind.NORMAL, true, 1300.0 + i * 600.0, z, false)
 
 
 func _process(delta: float) -> void:
@@ -135,6 +151,12 @@ func _tick_playing(dt_ms: float) -> void:
 	GameConfig.energy = maxf(0.0, GameConfig.energy)
 	GameConfig.tick_combo(delta_s)
 
+	# Stage-advance beat (one-shot per crossing).
+	var stage_now: int = _stage_for_distance(GameConfig.distance)
+	if stage_now != _current_stage:
+		_on_stage_advance(_current_stage, stage_now)
+		_current_stage = stage_now
+
 	if GameConfig.energy < 1.0 or GameConfig.hp <= 0:
 		GameConfig.status = GameConfig.STATUS_GAME_OVER
 		_on_game_over()
@@ -188,43 +210,114 @@ func _update_camera() -> void:
 
 # ----- Pillars ---------------------------------------------------------------
 
+## Routes each wave by current stage. Each stage unlocks new pillar mechanics:
+## earlier stages stay clean so the player can *learn one thing at a time*.
 func _construct_pillar_wave() -> void:
-	var diff: float = clampf(GameConfig.distance / 220.0, 0.0, 1.0)
-	var roll: float = randf()
+	match _stage_for_distance(GameConfig.distance):
+		1: _wave_warmup()
+		2: _wave_discern()
+		3: _wave_reflex()
+		4: _wave_sky()
+		_: _wave_chaos()
 
-	if diff < 0.25:
-		# Early: awe + easy combo fodder.
-		if roll < 0.5:
-			_spawn_colossus(randf() < 0.25, SPAWN_X, 0.0)
-			_spawn_pillar(PillarScript.Kind.NORMAL, true, SPAWN_X + 500.0, -120.0 + randf() * 240.0)
-		else:
-			_spawn_normal_cluster(2 + int(randf() * 2.0))
-	elif diff < 0.6:
-		if roll < 0.34:
-			_spawn_spike_line(2 + int(randf() * 2.0))
-		elif roll < 0.7:
-			_spawn_normal_cluster(3 + int(randf() * 2.0))
-		else:
-			_spawn_colossus(randf() < 0.3, SPAWN_X, 0.0)
-			_spawn_spike_line(2)
+
+## Stage 1 — WARMUP. Single breakable ground pillar at a time. Goal: teach the
+## "shoot red core → missile grows" loop in 1-2 seconds. No threat variety yet.
+func _wave_warmup() -> void:
+	var z: float = -180.0 + randf() * 360.0
+	_spawn_pillar(PillarScript.Kind.NORMAL, true, SPAWN_X + randf() * 200.0, z, false)
+
+
+## Stage 2 — 분별. Unbreakable ground pillars enter; player must distinguish
+## "red-core vs no-core" in real time. Small clusters, occasional side colossus.
+func _wave_discern() -> void:
+	var r: float = randf()
+	if r < 0.25:
+		_spawn_colossus(false, SPAWN_X, 0.0, false)
+	if r < 0.7:
+		_spawn_normal_cluster(2 + int(randf() * 2.0), false)
 	else:
-		# Late: storm. Two formations stacked.
-		if roll < 0.4:
-			_spawn_normal_cluster(4 + int(randf() * 2.0))
-			_spawn_spike_line(2 + int(randf() * 2.0))
-		elif roll < 0.7:
-			_spawn_pillar(PillarScript.Kind.FAKE, randf() < 0.4, SPAWN_X, -80.0 + randf() * 160.0, randf() < 0.3)
-			_spawn_normal_cluster(4)
-		else:
-			_spawn_colossus(true, SPAWN_X, 0.0)
-			_spawn_spike_line(3)
+		# A pair of normals, one breakable, one not — clean compare-and-pick beat.
+		var z1: float = -150.0 + randf() * 120.0
+		var z2: float = 30.0 + randf() * 120.0
+		_spawn_pillar(PillarScript.Kind.NORMAL, true, SPAWN_X, z1, false)
+		_spawn_pillar(PillarScript.Kind.NORMAL, false, SPAWN_X + 180.0, z2, false)
+
+
+## Stage 3 — 반사. SPIKES (fast, short-telegraph) unlock — reaction layer. First
+## giant looms during this stage. Still ground-only.
+func _wave_reflex() -> void:
+	var r: float = randf()
+	if r < 0.4:
+		_spawn_spike_line(2 + int(randf() * 2.0), false)
+	elif r < 0.75:
+		_spawn_normal_cluster(3 + int(randf() * 2.0), false)
+	else:
+		_spawn_colossus(false, SPAWN_X, 0.0, false)
+		_spawn_spike_line(2, false)
+
+
+## Stage 4 — 하늘. CEILING pillars first appear — the "head-duck" moment. Giant
+## kill happens here. Ground rate stays high; ceiling rate moderate so the new
+## axis lands hard each time it appears.
+func _wave_sky() -> void:
+	var r: float = randf()
+	if r < 0.35:
+		_spawn_normal_cluster(3 + int(randf() * 2.0), true)
+	elif r < 0.65:
+		_spawn_spike_line(2 + int(randf() * 2.0), true)
+	else:
+		_spawn_colossus(randf() < 0.3, SPAWN_X, 0.0, true)
+		_spawn_normal_cluster(2, true)
+
+
+## Stage 5 — 혼돈. FAKES enter, formations stack, everything mixed at max
+## density. Survival mode. This is where best-distance is earned.
+func _wave_chaos() -> void:
+	var r: float = randf()
+	if r < 0.3:
+		_spawn_normal_cluster(4 + int(randf() * 2.0), true)
+		_spawn_spike_line(2 + int(randf() * 2.0), true)
+	elif r < 0.55:
+		_spawn_pillar(PillarScript.Kind.FAKE, randf() < 0.4, SPAWN_X, -80.0 + randf() * 160.0, randf() < 0.3)
+		_spawn_normal_cluster(4, true)
+	elif r < 0.8:
+		_spawn_colossus(true, SPAWN_X, 0.0, true)
+		_spawn_spike_line(3, true)
+	else:
+		_spawn_pillar(PillarScript.Kind.FAKE, false, SPAWN_X, -100.0 + randf() * 200.0, randf() < 0.35)
+		_spawn_spike_line(2, true)
+		_spawn_normal_cluster(3, true)
+
+
+func _stage_for_distance(d: float) -> int:
+	var i: int = 0
+	for b in STAGE_BOUNDS:
+		if d >= b:
+			i += 1
+	return i + 1
+
+
+## Fired once when the run crosses into a new stage. Stage 4 entry gets a
+## deliberate beat (camera kick + an immediate hanging colossus on a safe side
+## lane) so the FIRST ceiling pillar is an intentional moment, not just one
+## more piece of noise — preserving the "head-duck" reflex impact.
+func _on_stage_advance(_old: int, new_stage: int) -> void:
+	if new_stage == 4:
+		shaker.shake(GameConfig.shake_hit_intensity * 1.4, 0.35)
+		flash_overlay.flash(0.18, 0.18, false)
+		# Force-spawn the first ceiling moment: a side-lane hanging colossus,
+		# guaranteed not in the dodge lane so it reads as "wow" not as
+		# "unfair death". Player learns ceiling exists, ducks instinctively.
+		var side: float = -1.0 if randf() < 0.5 else 1.0
+		var z: float = side * (340.0 + randf() * 130.0)
+		_spawn_pillar(PillarScript.Kind.COLOSSUS, false, SPAWN_X - 400.0, z, true)
 
 
 ## A row of NORMAL pillars across z, deliberately leaving one open lane so the
-## formation is always passable (never an unfair wall). Each member rolls its
-## own orientation (35% hang from ceiling) so the row mixes standing + hanging
-## monoliths — vertical dodge variety.
-func _spawn_normal_cluster(count: int) -> void:
+## formation is always passable. When `allow_ceiling`, each member rolls 35%
+## ceiling for vertical-dodge variety; when false, always ground.
+func _spawn_normal_cluster(count: int, allow_ceiling: bool = true) -> void:
 	var lanes: Array[float] = [-220.0, -130.0, -45.0, 45.0, 130.0, 220.0]
 	lanes.shuffle()
 	var open_lane: int = int(randf() * lanes.size())
@@ -232,26 +325,27 @@ func _spawn_normal_cluster(count: int) -> void:
 		if i == open_lane:
 			continue
 		var breakable: bool = randf() < 0.55
-		var from_ceiling: bool = randf() < 0.35
+		var from_ceiling: bool = allow_ceiling and randf() < 0.35
 		_spawn_pillar(PillarScript.Kind.NORMAL, breakable, SPAWN_X + randf() * 240.0, lanes[i], from_ceiling)
 
 
-func _spawn_spike_line(count: int) -> void:
+func _spawn_spike_line(count: int, allow_ceiling: bool = true) -> void:
 	for i in count:
 		var z: float = -200.0 + randf() * 400.0
-		var from_ceiling: bool = randf() < 0.35   # stalactite vs spike
+		var from_ceiling: bool = allow_ceiling and randf() < 0.35   # stalactite vs spike
 		_spawn_pillar(PillarScript.Kind.SPIKE, randf() < 0.7, SPAWN_X + i * 220.0, z, from_ceiling)
 
 
 ## Colossi loom in a SIDE lane (never the centre) so they overwhelm the frame
 ## without burying the chase camera in a dead-centre wall. `side`: -1/+1 forces
-## a side, 0 picks randomly. ~30% of colossi HANG from the ceiling (image.png).
-func _spawn_colossus(breakable: bool, x: float, side: float) -> void:
+## a side, 0 picks randomly. When `allow_ceiling`, ~30% hang from the ceiling
+## (image.png motif); when false, always ground (stages 1–3).
+func _spawn_colossus(breakable: bool, x: float, side: float, allow_ceiling: bool = true) -> void:
 	var s: float = side
 	if absf(s) < 0.5:
 		s = -1.0 if randf() < 0.5 else 1.0
 	var z: float = s * (340.0 + randf() * 130.0)
-	var from_ceiling: bool = randf() < 0.3
+	var from_ceiling: bool = allow_ceiling and randf() < 0.3
 	_spawn_pillar(PillarScript.Kind.COLOSSUS, breakable, x, z, from_ceiling)
 
 

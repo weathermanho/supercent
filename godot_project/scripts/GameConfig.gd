@@ -130,7 +130,9 @@ var missile_lock_radius: float = 120.0        # generous: lock without putting t
 # Showpiece distances (m) — tuned for a 30-second ad cut at default scroll speed.
 # At init_speed=0.00035 the player reaches ~525 distance in 30s, so escalation
 # beats must fit inside that window.
-var giant_distance_thresholds: Array[int] = [80, 160, 250]
+## Aligned with stage boundaries: first giant looms during stage 3 (반사),
+## second giant is the climactic kill of stage 4 (하늘).
+var giant_distance_thresholds: Array[int] = [110, 230]
 var weapon_upgrade_distances: Array[int] = [40, 120]
 
 # Juice constants
