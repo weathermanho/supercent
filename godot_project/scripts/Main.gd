@@ -1681,9 +1681,9 @@ func _spawn_ult_pulse(pos: Vector3) -> void:
 		mi.set_surface_override_material(0, mat)
 		add_child(mi)
 		mi.global_position = pos
-		var start_s: float = 6.0 + float(layer) * 4.0
-		var end_s: float = 80.0 + float(layer) * 60.0
-		var dur: float = 0.55 + float(layer) * 0.18
+		var start_s: float = 3.0 + float(layer) * 2.0
+		var end_s: float = 40.0 + float(layer) * 30.0
+		var dur: float = 0.275 + float(layer) * 0.09
 		mi.scale = Vector3.ONE * start_s
 		var tw := create_tween()
 		tw.tween_property(mi, "scale", Vector3.ONE * end_s, dur) \
