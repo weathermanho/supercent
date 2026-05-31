@@ -1563,15 +1563,16 @@ func _fire_ultimate() -> void:
 		return
 	GameConfig.ultimate_gauge = 0.0
 
-	# Visible "energy release" — fire the shockwaves BEFORE the slowmo so they
-	# grow at full real-time speed for a punchy pulse, not a creeping smear.
-	# Two concentric rings (inner fast, outer big) read as a clear EXPLOSION
-	# from the plane.
+	# Visible "energy release" — FIVE concentric shockwaves grow in lockstep
+	# with the plane at the centre, plus a big bright explosion at the plane's
+	# muzzle. Spawned BEFORE the slowmo request so the first frame draws at
+	# real time (no creeping smear). This is the "BOOM, here it goes" pulse.
 	var pulse_pos: Vector3 = airplane.position + Vector3(30.0, 15.0, 0.0)
-	_spawn_shockwave(pulse_pos, 90.0, 0.3)
-	_spawn_shockwave(pulse_pos, 240.0, 0.55)
-	# Plus a bright plume at the plane so the release reads as power.
-	_spawn_explosion(pulse_pos, SmokeBurstScript.Kind.GIANT_HIT, 3.5)
+	var ring_scales: Array = [40.0, 80.0, 130.0, 190.0, 260.0]
+	var ring_durations: Array = [0.25, 0.32, 0.40, 0.50, 0.62]
+	for i in ring_scales.size():
+		_spawn_shockwave(pulse_pos, ring_scales[i], ring_durations[i])
+	_spawn_explosion(pulse_pos, SmokeBurstScript.Kind.GIANT_FINISH, 3.0)
 
 	flash_overlay.flash(0.7, 0.5, false)
 	shaker.shake(GameConfig.shake_giant_intensity * 1.5, 0.65)
@@ -1644,14 +1645,16 @@ func _unhandled_input(event: InputEvent) -> void:
 		and event.button_index == MOUSE_BUTTON_LEFT)
 	var right_click: bool = (event is InputEventMouseButton and event.pressed
 		and event.button_index == MOUSE_BUTTON_RIGHT)
-	var space_press: bool = (event is InputEventKey and event.pressed
-		and not event.echo and event.keycode == KEY_SPACE)
+	var space_press: bool = event.is_action_pressed("ui_select") \
+		or (event is InputEventKey and event.pressed and not event.echo \
+		    and event.keycode == KEY_SPACE)
 
 	# ULTIMATE — right-click or SPACE when the gauge is full. Checked FIRST so
 	# the ult fires instead of the regular missile salvo if both apply.
 	if (right_click or space_press) and GameConfig.status == GameConfig.STATUS_PLAYING:
 		if GameConfig.ultimate_gauge >= GameConfig.ultimate_gauge_max:
 			_fire_ultimate()
+			get_viewport().set_input_as_handled()
 			return
 
 	var primary: bool = left_click or event.is_action_pressed("fire_missle")
