@@ -289,7 +289,13 @@ func _construct_pillar_wave() -> void:
 ## "shoot red core → missile grows" loop in 1-2 seconds. No threat variety yet.
 func _wave_warmup() -> void:
 	var z: float = -180.0 + randf() * 360.0
-	_spawn_pillar(PillarScript.Kind.NORMAL, true, SPAWN_X + randf() * 200.0, z, false)
+	var x: float = SPAWN_X + randf() * 200.0
+	# Even a single warmup spawn re-tries z if a stale unbreakable would mask it.
+	for attempt in 5:
+		if not _has_blocker_for_breakable_at(x, z):
+			break
+		z = -180.0 + randf() * 360.0
+	_spawn_pillar(PillarScript.Kind.NORMAL, true, x, z, false)
 
 
 ## Stage 2 — 분별. Unbreakable ground pillars enter; player must distinguish
@@ -302,10 +308,15 @@ func _wave_discern() -> void:
 		_spawn_normal_cluster(2 + int(randf() * 2.0), false)
 	else:
 		# A pair of normals, one breakable, one not — clean compare-and-pick beat.
-		var z1: float = -150.0 + randf() * 120.0
-		var z2: float = 30.0 + randf() * 120.0
-		_spawn_pillar(PillarScript.Kind.NORMAL, true, SPAWN_X, z1, false)
-		_spawn_pillar(PillarScript.Kind.NORMAL, false, SPAWN_X + 180.0, z2, false)
+		# Place the breakable in a lane that's not blocked by a stale unbreakable.
+		var z_break: float = -150.0 + randf() * 120.0
+		for attempt in 5:
+			if not _has_blocker_for_breakable_at(SPAWN_X, z_break):
+				break
+			z_break = -200.0 + randf() * 400.0
+		var z_solid: float = 30.0 + randf() * 120.0
+		_spawn_pillar(PillarScript.Kind.NORMAL, true, SPAWN_X, z_break, false)
+		_spawn_pillar(PillarScript.Kind.NORMAL, false, SPAWN_X + 180.0, z_solid, false)
 
 
 ## Stage 3 — 반사. SPIKES (fast, short-telegraph) unlock — reaction layer. First
@@ -380,25 +391,67 @@ func _on_stage_advance(_old: int, new_stage: int) -> void:
 
 ## A row of NORMAL pillars across z, deliberately leaving one open lane so the
 ## formation is always passable. Lanes are trimmed to ±200 so they stay inside
-## the plane's reachable z (cores are never unreachable). When `allow_ceiling`,
-## each member rolls 35% ceiling for vertical-dodge variety.
+## the plane's reachable z. Breakables avoid lanes already blocked by an
+## existing unbreakable closer to the plane — they swap into a free lane or
+## demote to unbreakable so the player never sees a target they can't shoot.
 func _spawn_normal_cluster(count: int, allow_ceiling: bool = true) -> void:
 	var lanes: Array[float] = [-200.0, -120.0, -45.0, 45.0, 120.0, 200.0]
 	lanes.shuffle()
 	var open_lane: int = int(randf() * lanes.size())
+	var x_ref: float = SPAWN_X + 120.0
+	# Pre-classify the lanes we'll actually use into safe / blocked for a
+	# new BREAKABLE spawn (based on existing unbreakables in front).
+	var slots: Array = []
 	for i in mini(count, lanes.size()):
 		if i == open_lane:
 			continue
-		var breakable: bool = randf() < 0.55
+		slots.append(lanes[i])
+	var safe_for_breakable: Array = []
+	var blocked: Array = []
+	for z in slots:
+		if _has_blocker_for_breakable_at(x_ref, z):
+			blocked.append(z)
+		else:
+			safe_for_breakable.append(z)
+	safe_for_breakable.shuffle()
+
+	for z in slots:
+		var x: float = SPAWN_X + randf() * 240.0
+		var want_breakable: bool = randf() < 0.55
+		# If we want a breakable but this lane is blocked, try to swap with a
+		# still-free safe lane. If none left, demote to unbreakable.
+		if want_breakable and z in blocked:
+			if safe_for_breakable.size() > 0:
+				z = safe_for_breakable.pop_back()
+				blocked.append(z) # consumed
+			else:
+				want_breakable = false
+		elif (not want_breakable) and z in safe_for_breakable:
+			# Reserve safe lanes for breakables when possible.
+			safe_for_breakable.erase(z)
 		var from_ceiling: bool = allow_ceiling and randf() < 0.35
-		_spawn_pillar(PillarScript.Kind.NORMAL, breakable, SPAWN_X + randf() * 240.0, lanes[i], from_ceiling)
+		_spawn_pillar(PillarScript.Kind.NORMAL, want_breakable, x, z, from_ceiling)
 
 
 func _spawn_spike_line(count: int, allow_ceiling: bool = true) -> void:
 	for i in count:
 		var z: float = -190.0 + randf() * 380.0    # ±190 → inside plane reach
-		var from_ceiling: bool = allow_ceiling and randf() < 0.35   # stalactite vs spike
-		_spawn_pillar(PillarScript.Kind.SPIKE, randf() < 0.7, SPAWN_X + i * 220.0, z, from_ceiling)
+		var x: float = SPAWN_X + i * 220.0
+		var want_breakable: bool = randf() < 0.7
+		# Breakable spike: retry a few random z's to find a non-blocked one.
+		# If we can't, demote to unbreakable so the player isn't teased.
+		if want_breakable and _has_blocker_for_breakable_at(x, z):
+			var found := false
+			for attempt in 6:
+				var alt_z: float = -190.0 + randf() * 380.0
+				if not _has_blocker_for_breakable_at(x, alt_z):
+					z = alt_z
+					found = true
+					break
+			if not found:
+				want_breakable = false
+		var from_ceiling: bool = allow_ceiling and randf() < 0.35
+		_spawn_pillar(PillarScript.Kind.SPIKE, want_breakable, x, z, from_ceiling)
 
 
 ## Colossi: an UNBREAKABLE one looms from a SIDE lane (frames the corridor,
@@ -425,6 +478,29 @@ func _spawn_pillar(kind: int, breakable: bool, x: float, z: float, from_ceiling:
 	add_child(p)
 	_pillars.append(p)
 	p.position = Vector3(x, p.position.y, z)
+
+
+## Would a BREAKABLE spawned at (target_x, target_z) be masked by an existing
+## UNBREAKABLE pillar in the same z lane closer to the plane? If so, the player
+## sees a target they can never line up on (the unbreakable scrolls past first
+## but blocks shots in the meantime). We use this at spawn-time to relocate or
+## demote.
+func _has_blocker_for_breakable_at(target_x: float, target_z: float) -> bool:
+	const Z_LANE_TOLERANCE := 90.0
+	const X_LOOK_AHEAD := 1800.0
+	for pl in _pillars:
+		if not is_instance_valid(pl):
+			continue
+		if pl.breakable:
+			continue
+		if absf(pl.global_position.z - target_z) > Z_LANE_TOLERANCE:
+			continue
+		if pl.global_position.x >= target_x:
+			continue
+		if target_x - pl.global_position.x > X_LOOK_AHEAD:
+			continue
+		return true
+	return false
 
 
 ## Drop any freed pillar references so the rest of the frame only ever
@@ -528,6 +604,11 @@ func _spawn_giant_escort(gx: float) -> void:
 
 
 func _spawn_escort_pillar(x: float, z: float) -> void:
+	# Nudge z if a stale unbreakable would mask the escort core.
+	for attempt in 5:
+		if not _has_blocker_for_breakable_at(x, z):
+			break
+		z = -200.0 + randf() * 400.0
 	var p: Node3D = PillarScript.new()
 	p.configure(PillarScript.Kind.NORMAL, true, false)
 	p.is_giant_escort = true
@@ -891,10 +972,6 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 		_show_moment("OVERCHARGE!", Color(1.0, 0.55, 0.18), 108)
 		flash_overlay.flash(0.5, 0.4, false)
 		shaker.shake(GameConfig.shake_giant_intensity * 1.2, 0.6)
-
-		# Sort pillars by distance to the giant so the chain RIPPLES OUT from
-		# the kill point — feels like a shockwave propagating, not a synchronised
-		# carpet-bomb. Staggered timers fire each detonation in turn.
 		var giant_pos: Vector3 = g.position
 		var ordered: Array = _pillars.duplicate()
 		ordered.sort_custom(func(a, b):
