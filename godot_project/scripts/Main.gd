@@ -100,6 +100,17 @@ func _ready() -> void:
 	GameConfig.reset_to_defaults()
 	director.reset()
 	_current_stage = 1
+	# Register a custom "fire_ult" action bound to SPACE + right-click so SPACE
+	# can't be consumed by UI defaults or focus elsewhere — this guarantees
+	# the press reaches us via is_action_pressed.
+	if not InputMap.has_action("fire_ult"):
+		InputMap.add_action("fire_ult")
+		var ev_space := InputEventKey.new()
+		ev_space.keycode = KEY_SPACE
+		InputMap.action_add_event("fire_ult", ev_space)
+		var ev_rmb := InputEventMouseButton.new()
+		ev_rmb.button_index = MOUSE_BUTTON_RIGHT
+		InputMap.action_add_event("fire_ult", ev_rmb)
 	_max_combo_run = 0
 	_max_tier_run = 0
 	_giants_killed_run = 0
@@ -1680,22 +1691,24 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().quit()
 		return
 
-	var left_click: bool = (event is InputEventMouseButton and event.pressed
-		and event.button_index == MOUSE_BUTTON_LEFT)
-	var right_click: bool = (event is InputEventMouseButton and event.pressed
-		and event.button_index == MOUSE_BUTTON_RIGHT)
-	var space_press: bool = event.is_action_pressed("ui_select") \
-		or (event is InputEventKey and event.pressed and not event.echo \
-			and event.keycode == KEY_SPACE)
+	# Debug: log every key press so we can confirm SPACE reaches here.
+	if event is InputEventKey and event.pressed and not event.echo:
+		print("[INPUT] key=", event.keycode, " status=", GameConfig.status,
+			" ult_gauge=", GameConfig.ultimate_gauge,
+			" fire_ult_action=", event.is_action_pressed("fire_ult"))
 
-	# ULTIMATE — right-click or SPACE when the gauge is full. Checked FIRST so
-	# the ult fires instead of the regular missile salvo if both apply.
-	if (right_click or space_press) and GameConfig.status == GameConfig.STATUS_PLAYING:
+	# ULTIMATE — checked FIRST via the custom "fire_ult" action (SPACE +
+	# right-click, bound in _ready) so default UI handlers can't intercept.
+	if event.is_action_pressed("fire_ult") and GameConfig.status == GameConfig.STATUS_PLAYING:
+		print("[ULT] fire_ult pressed, gauge=", GameConfig.ultimate_gauge,
+			" / max=", GameConfig.ultimate_gauge_max)
 		if GameConfig.ultimate_gauge >= GameConfig.ultimate_gauge_max:
 			_fire_ultimate()
 			get_viewport().set_input_as_handled()
 			return
 
+	var left_click: bool = (event is InputEventMouseButton and event.pressed
+		and event.button_index == MOUSE_BUTTON_LEFT)
 	var primary: bool = left_click or event.is_action_pressed("fire_missle")
 	if not primary:
 		return
