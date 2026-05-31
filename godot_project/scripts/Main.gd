@@ -1084,10 +1084,11 @@ func _update_particles(dt_ms: float) -> void:
 	_cleanup(to_remove, _particles)
 
 
-func _spawn_shockwave(pos: Vector3, end_scale_: float, duration_: float) -> void:
+func _spawn_shockwave(pos: Vector3, end_scale_: float, duration_: float, real_time: bool = false) -> void:
 	var ring: Node3D = ShockwaveRingScript.new()
 	ring.end_scale = end_scale_
 	ring.duration = duration_
+	ring.real_time = real_time
 	add_child(ring)
 	ring.position = pos
 	_shockwaves.append(ring)
@@ -1570,8 +1571,10 @@ func _fire_ultimate() -> void:
 	var pulse_pos: Vector3 = airplane.position + Vector3(30.0, 15.0, 0.0)
 	var ring_scales: Array = [40.0, 80.0, 130.0, 190.0, 260.0]
 	var ring_durations: Array = [0.25, 0.32, 0.40, 0.50, 0.62]
+	# real_time=true so the rings grow on wall-clock seconds and aren't slowed
+	# to 0.35x by the slowmo below — the pulse stays punchy.
 	for i in ring_scales.size():
-		_spawn_shockwave(pulse_pos, ring_scales[i], ring_durations[i])
+		_spawn_shockwave(pulse_pos, ring_scales[i], ring_durations[i], true)
 	_spawn_explosion(pulse_pos, SmokeBurstScript.Kind.GIANT_FINISH, 3.0)
 
 	flash_overlay.flash(0.7, 0.5, false)
@@ -1647,7 +1650,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		and event.button_index == MOUSE_BUTTON_RIGHT)
 	var space_press: bool = event.is_action_pressed("ui_select") \
 		or (event is InputEventKey and event.pressed and not event.echo \
-		    and event.keycode == KEY_SPACE)
+			and event.keycode == KEY_SPACE)
 
 	# ULTIMATE — right-click or SPACE when the gauge is full. Checked FIRST so
 	# the ult fires instead of the regular missile salvo if both apply.

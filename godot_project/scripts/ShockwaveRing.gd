@@ -5,8 +5,13 @@ extends Node3D
 
 @export var end_scale: float = 8.0
 @export var duration: float = 0.4
+## When true the ring grows on REAL wall-clock time, ignoring
+## GameConfig.time_scale (slowmo / hitstop). Used by the ULT pulse so the
+## release punch still reads sharply through the slowmo it triggers.
+var real_time: bool = false
 
 var _t: float = 0.0
+var _start_msec: int = 0
 var _mat: StandardMaterial3D
 var _mesh: MeshInstance3D
 
@@ -29,10 +34,14 @@ func _ready() -> void:
 	_mesh.set_surface_override_material(0, _mat)
 	add_child(_mesh)
 	scale = Vector3.ONE
+	_start_msec = Time.get_ticks_msec()
 
 
 func step(dt_ms: float) -> bool:
-	_t += dt_ms / 1000.0
+	if real_time:
+		_t = (Time.get_ticks_msec() - _start_msec) / 1000.0
+	else:
+		_t += dt_ms / 1000.0
 	var p: float = clampf(_t / duration, 0.0, 1.0)
 	var s: float = lerpf(1.0, end_scale, p)
 	scale = Vector3(s, s, s)
