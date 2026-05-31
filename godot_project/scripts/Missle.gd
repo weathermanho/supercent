@@ -17,6 +17,9 @@ var velocity: Vector3 = Vector3.ZERO
 var target: Node3D = null
 var time_alive: float = 0.0
 var prev_position: Vector3 = Vector3.ZERO
+## Set true on the first frame the booster fires so we snap the velocity
+## direction from "still falling" to "going forward" once and only once.
+var _boost_started: bool = false
 
 ## Combo tier this missile was fired at (drives giant skill-check + explosion
 ## power). pierce = how many extra pillars it can punch through before dying
@@ -75,21 +78,21 @@ func step(dt_ms: float) -> void:
 		position += velocity * delta
 		_orient_to_dir(Vector3.RIGHT)
 	else:
-		# Phase 2 — booster: SMOOTHLY turn toward the target instead of snapping.
-		# A limited turn rate produces a visible arc (the missile sweeps up out
-		# of the drop) and reads as a guided weapon, not a tracking laser. With
-		# no target the missile keeps its current heading (straight forward).
+		# Phase 2 — booster. On the FIRST boost frame snap velocity to pure
+		# forward so the curve that follows is *toward the target* (up / down /
+		# left / right) instead of "smoothly out of the downward drop" (which
+		# made the missile arc downward awkwardly). After the snap, a limited
+		# turn rate produces a visible guided-weapon arc.
+		if not _boost_started:
+			_boost_started = true
+			velocity = Vector3.RIGHT * 320.0
+
 		var dir_target: Vector3 = Vector3.RIGHT
 		if target != null and is_instance_valid(target):
 			dir_target = (target.global_position - global_position).normalized()
 
-		var current_dir: Vector3
-		if velocity.length_squared() > 1.0:
-			current_dir = velocity.normalized()
-		else:
-			current_dir = Vector3.RIGHT
+		var current_dir: Vector3 = velocity.normalized() if velocity.length_squared() > 1.0 else Vector3.RIGHT
 
-		# Turn rate in radians/sec; clamped blend factor caps per-frame swing.
 		const TURN_RATE := 5.0
 		var blend: float = clampf(TURN_RATE * delta, 0.0, 1.0)
 		var new_dir: Vector3 = current_dir.lerp(dir_target, blend).normalized()
