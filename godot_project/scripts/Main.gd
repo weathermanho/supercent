@@ -1563,11 +1563,19 @@ func _fire_ultimate() -> void:
 		return
 	GameConfig.ultimate_gauge = 0.0
 
+	# Visible "energy release" — fire the shockwaves BEFORE the slowmo so they
+	# grow at full real-time speed for a punchy pulse, not a creeping smear.
+	# Two concentric rings (inner fast, outer big) read as a clear EXPLOSION
+	# from the plane.
+	var pulse_pos: Vector3 = airplane.position + Vector3(30.0, 15.0, 0.0)
+	_spawn_shockwave(pulse_pos, 90.0, 0.3)
+	_spawn_shockwave(pulse_pos, 240.0, 0.55)
+	# Plus a bright plume at the plane so the release reads as power.
+	_spawn_explosion(pulse_pos, SmokeBurstScript.Kind.GIANT_HIT, 3.5)
+
 	flash_overlay.flash(0.7, 0.5, false)
 	shaker.shake(GameConfig.shake_giant_intensity * 1.5, 0.65)
 	time_scaler.request_slowmo(0.35, 1.1)
-	# A bright ring expanding from the plane reads as the "release" pulse.
-	_spawn_shockwave(airplane.position + Vector3(20.0, 20.0, 0.0), 140.0, 1.0)
 
 	# Sort every solid-hazard pillar by distance from the plane so the chain
 	# RIPPLES OUT (nearest first). Staggered timers fire each detonation.
@@ -1601,15 +1609,16 @@ func _fire_ultimate() -> void:
 
 
 ## Single pillar's ULT chain detonation — scheduled by staggered timers. Safe
-## against freed / non-hazard pillars.
+## against freed / non-hazard pillars. ULT clears the FIELD, so even
+## unbreakable pillars get shattered (the player's screen-clearing payoff —
+## "the ultimate destroys everything").
 func _ult_blast(pl: Node3D) -> void:
 	if not is_instance_valid(pl):
 		return
 	if not pl.is_solid_hazard():
 		return
 	_spawn_explosion(pl.global_position, SmokeBurstScript.Kind.PILLAR_BREAK, 4.0)
-	if pl.breakable and pl.core_alive:
-		pl.shatter()
+	pl.shatter()
 
 
 ## Color tied to combo tier — white -> warm yellow -> orange -> hot red.
