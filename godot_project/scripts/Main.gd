@@ -502,6 +502,26 @@ func _construct_giant() -> void:
 	giant.scale = Vector3.ONE * 2.2   # loom huge — the screen-erasing climax
 	giant.wall = null
 	_targets.append(giant)
+	# Surround the climax with breakable cores so the giant isn't alone on stage
+	# and so the OVERCHARGE chain has real fuel to propagate through.
+	_spawn_giant_escort()
+
+
+## Breakable-pillar "honor guard" that fills the giant's approach zone. Lanes
+## are inside plane reach so each one is a real combo opportunity / OVERCHARGE
+## node, not just dressing.
+func _spawn_giant_escort() -> void:
+	var lanes: Array[float] = [-180.0, -90.0, 0.0, 90.0, 180.0]
+	lanes.shuffle()
+	# A first wedge ~ahead of giant (player sees these first), then a second
+	# layer flanking + behind the giant for the post-kill OVERCHARGE chain.
+	for i in 5:
+		_spawn_pillar(PillarScript.Kind.NORMAL, true,
+			1700.0 + i * 220.0 + randf() * 60.0, lanes[i], false)
+	for k in 4:
+		var z: float = -160.0 + randf() * 320.0
+		_spawn_pillar(PillarScript.Kind.NORMAL, true,
+			2400.0 + k * 240.0 + randf() * 80.0, z, false)
 
 
 func _move_targets(dt_ms: float) -> void:
@@ -811,6 +831,19 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> bool:
 	return true
 
 
+## Single pillar's OVERCHARGE detonation — scheduled by a staggered timer so
+## the chain ripples out. Safe to fire on a queue_freed pillar (the validity
+## check just skips).
+func _overcharge_blast(pl: Node3D) -> void:
+	if not is_instance_valid(pl):
+		return
+	if not pl.is_solid_hazard():
+		return
+	_spawn_explosion(pl.global_position, SmokeBurstScript.Kind.PILLAR_BREAK, 3.0)
+	if pl.breakable and pl.core_alive:
+		pl.shatter()
+
+
 func _on_giant_chip(g: Node3D) -> void:
 	# Missile too weak: visible "bounce" so the player learns to grow first.
 	_spawn_explosion(g.position, SmokeBurstScript.Kind.GIANT_CHIP, 1.0)
@@ -846,15 +879,27 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 		_show_moment("OVERCHARGE!", Color(1.0, 0.55, 0.18), 108)
 		flash_overlay.flash(0.5, 0.4, false)
 		shaker.shake(GameConfig.shake_giant_intensity * 1.2, 0.6)
-		for pl in _pillars:
+
+		# Sort pillars by distance to the giant so the chain RIPPLES OUT from
+		# the kill point — feels like a shockwave propagating, not a synchronised
+		# carpet-bomb. Staggered timers fire each detonation in turn.
+		var giant_pos: Vector3 = g.position
+		var ordered: Array = _pillars.duplicate()
+		ordered.sort_custom(func(a, b):
+			if not is_instance_valid(a):
+				return false
+			if not is_instance_valid(b):
+				return true
+			return a.global_position.distance_squared_to(giant_pos) \
+				< b.global_position.distance_squared_to(giant_pos))
+		var delay: float = 0.0
+		for pl in ordered:
 			if not is_instance_valid(pl):
 				continue
 			if not pl.is_solid_hazard():
 				continue
-			var ppos: Vector3 = pl.global_position
-			_spawn_explosion(ppos, SmokeBurstScript.Kind.PILLAR_BREAK, 3.0)
-			if pl.breakable and pl.core_alive:
-				pl.shatter()
+			get_tree().create_timer(delay).timeout.connect(_overcharge_blast.bind(pl))
+			delay += 0.06
 
 	var idx: int = _targets.find(g)
 	if idx >= 0:
