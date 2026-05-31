@@ -143,7 +143,7 @@ func _ready() -> void:
 	# through. Edges are drawn separately with no_depth_test for the
 	# wireframe threat overlay.
 	var body_color: Color = Color8(134, 126, 118) if breakable else Color8(94, 97, 104)
-	_body = BoxFactory.make_transparent_box(w, h, d, body_color, 0.85)
+	_body = BoxFactory.make_transparent_box(w, h, d, body_color, 0.95)
 	_body.visible = false
 	add_child(_body)
 
@@ -216,10 +216,10 @@ func step(dt_ms: float, plane_x: float) -> bool:
 				_t = 0.0
 				_pending_erupt = true
 				# Materialize the pillar at the moment it begins to move so
-				# nothing of it has been visible before this frame.
+				# nothing of it has been visible before this frame. Edges stay
+				# hidden — they only appear when set_threat(true) flags this
+				# pillar as on the plane's collision course.
 				_body.visible = true
-				for e in _edges:
-					e.visible = true
 				if _core != null:
 					_core.visible = true
 		Phase.RISING:
@@ -292,18 +292,26 @@ func _add_edge(size: Vector3, pos: Vector3) -> void:
 
 
 ## Toggle threat indicator (called from Main each frame). Threat = the plane's
-## future trajectory volume intersects this pillar's AABB.
+## future trajectory volume intersects this pillar's AABB. Edges are ONLY drawn
+## when threat is true — outline appears as a warning, vanishes when the path
+## is clear.
 func set_threat(threat: bool) -> void:
 	if _edge_mat == null:
 		return
+	if threat == _is_threat:
+		return    # no-op, avoid re-walking _edges every frame
 	_is_threat = threat
 	if threat:
 		_edge_mat.emission_enabled = true
 		_edge_mat.emission = Color(1.0, 0.25, 0.20)
 		_edge_mat.albedo_color = Color(1.0, 0.55, 0.45)
+		for e in _edges:
+			e.visible = true
 	else:
 		_edge_mat.emission_enabled = false
 		_edge_mat.albedo_color = Color(0.88, 0.88, 0.92)
+		for e in _edges:
+			e.visible = false
 
 
 ## One-shot: true on the single frame the pillar begins erupting (for camera
