@@ -1084,11 +1084,13 @@ func _update_particles(dt_ms: float) -> void:
 	_cleanup(to_remove, _particles)
 
 
-func _spawn_shockwave(pos: Vector3, end_scale_: float, duration_: float, real_time: bool = false) -> void:
+func _spawn_shockwave(pos: Vector3, end_scale_: float, duration_: float,
+		real_time: bool = false, thickness: float = 1.0) -> void:
 	var ring: Node3D = ShockwaveRingScript.new()
 	ring.end_scale = end_scale_
 	ring.duration = duration_
 	ring.real_time = real_time
+	ring.tube_thickness = thickness
 	add_child(ring)
 	ring.position = pos
 	_shockwaves.append(ring)
@@ -1569,12 +1571,12 @@ func _fire_ultimate() -> void:
 	# muzzle. Spawned BEFORE the slowmo request so the first frame draws at
 	# real time (no creeping smear). This is the "BOOM, here it goes" pulse.
 	var pulse_pos: Vector3 = airplane.position + Vector3(30.0, 15.0, 0.0)
-	var ring_scales: Array = [40.0, 80.0, 130.0, 190.0, 260.0]
-	var ring_durations: Array = [0.25, 0.32, 0.40, 0.50, 0.62]
-	# real_time=true so the rings grow on wall-clock seconds and aren't slowed
-	# to 0.35x by the slowmo below — the pulse stays punchy.
+	# real_time=true so the rings grow on wall-clock seconds (slowmo doesn't
+	# crush them to a creep). Thick tube + no-depth-test mat = unmistakable.
+	var ring_scales: Array = [50.0, 95.0, 150.0, 215.0, 290.0]
+	var ring_durations: Array = [0.45, 0.55, 0.65, 0.80, 0.95]
 	for i in ring_scales.size():
-		_spawn_shockwave(pulse_pos, ring_scales[i], ring_durations[i], true)
+		_spawn_shockwave(pulse_pos, ring_scales[i], ring_durations[i], true, 4.0)
 	_spawn_explosion(pulse_pos, SmokeBurstScript.Kind.GIANT_FINISH, 3.0)
 
 	flash_overlay.flash(0.7, 0.5, false)
