@@ -71,9 +71,15 @@ var distance_for_coins_spawn: int = 200
 
 var ennemy_distance_tolerance: float = 10.0
 var ennemy_value: int = 10
+var base_ennemies_speed: float = 0.6                          # multiplied by stage
 var ennemies_speed: float = 0.6
 var ennemy_last_spawn: int = 0
-var distance_for_ennemies_spawn: int = 22   # forest with breathing room (was 16)
+var distance_for_ennemies_spawn: int = 22   # legacy; replaced by stage tables
+
+## Per-stage pacing — stage 1 (warmup) is slow + sparse; stage 5 (chaos) is fast
+## + dense. Driven by Main._tick_playing using _current_stage as the index.
+var stage_spawn_intervals: Array[int] = [30, 22, 18, 16, 14]
+var stage_speed_mults: Array[float] = [0.85, 1.0, 1.1, 1.2, 1.4]
 
 var status: int = STATUS_PLAYING
 

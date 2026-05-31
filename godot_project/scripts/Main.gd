@@ -183,6 +183,11 @@ func _update_tap_pulse() -> void:
 func _tick_playing(dt_ms: float) -> void:
 	var delta_s: float = dt_ms / 1000.0
 
+	# Drive stage-based pacing: stage 1 sparse+slow → stage 5 dense+fast.
+	var stage_idx: int = clampi(_current_stage - 1, 0, GameConfig.stage_spawn_intervals.size() - 1)
+	var spawn_interval: int = GameConfig.stage_spawn_intervals[stage_idx]
+	GameConfig.ennemies_speed = GameConfig.base_ennemies_speed * GameConfig.stage_speed_mults[stage_idx]
+
 	var d_int := floori(GameConfig.distance)
 
 	if d_int % GameConfig.distance_for_speed_update == 0 and d_int > GameConfig.speed_last_update:
@@ -190,7 +195,7 @@ func _tick_playing(dt_ms: float) -> void:
 		GameConfig.target_base_speed += GameConfig.increment_speed_by_time * dt_ms
 
 	# Pillar-wave / giant spawn tick (was enemy spawn).
-	if d_int % GameConfig.distance_for_ennemies_spawn == 0 and d_int > GameConfig.ennemy_last_spawn:
+	if d_int % spawn_interval == 0 and d_int > GameConfig.ennemy_last_spawn:
 		GameConfig.ennemy_last_spawn = d_int
 		if director.consume_giant_due():
 			_construct_giant()
@@ -374,10 +379,11 @@ func _on_stage_advance(_old: int, new_stage: int) -> void:
 
 
 ## A row of NORMAL pillars across z, deliberately leaving one open lane so the
-## formation is always passable. When `allow_ceiling`, each member rolls 35%
-## ceiling for vertical-dodge variety; when false, always ground.
+## formation is always passable. Lanes are trimmed to ±200 so they stay inside
+## the plane's reachable z (cores are never unreachable). When `allow_ceiling`,
+## each member rolls 35% ceiling for vertical-dodge variety.
 func _spawn_normal_cluster(count: int, allow_ceiling: bool = true) -> void:
-	var lanes: Array[float] = [-220.0, -130.0, -45.0, 45.0, 130.0, 220.0]
+	var lanes: Array[float] = [-200.0, -120.0, -45.0, 45.0, 120.0, 200.0]
 	lanes.shuffle()
 	var open_lane: int = int(randf() * lanes.size())
 	for i in mini(count, lanes.size()):
@@ -390,21 +396,26 @@ func _spawn_normal_cluster(count: int, allow_ceiling: bool = true) -> void:
 
 func _spawn_spike_line(count: int, allow_ceiling: bool = true) -> void:
 	for i in count:
-		var z: float = -200.0 + randf() * 400.0
+		var z: float = -190.0 + randf() * 380.0    # ±190 → inside plane reach
 		var from_ceiling: bool = allow_ceiling and randf() < 0.35   # stalactite vs spike
 		_spawn_pillar(PillarScript.Kind.SPIKE, randf() < 0.7, SPAWN_X + i * 220.0, z, from_ceiling)
 
 
-## Colossi loom in a SIDE lane (never the centre) so they overwhelm the frame
-## without burying the chase camera in a dead-centre wall. `side`: -1/+1 forces
-## a side, 0 picks randomly. When `allow_ceiling`, ~30% hang from the ceiling
-## (image.png motif); when false, always ground (stages 1–3).
+## Colossi: an UNBREAKABLE one looms from a SIDE lane (frames the corridor,
+## doesn't bury the camera). A BREAKABLE one stands roughly center so its core
+## is inside the plane's reachable z range — otherwise the player would see a
+## target they can't physically line up on. When `allow_ceiling`, ~30% of side
+## colossi hang from the ceiling (image.png motif).
 func _spawn_colossus(breakable: bool, x: float, side: float, allow_ceiling: bool = true) -> void:
-	var s: float = side
-	if absf(s) < 0.5:
-		s = -1.0 if randf() < 0.5 else 1.0
-	var z: float = s * (340.0 + randf() * 130.0)
-	var from_ceiling: bool = allow_ceiling and randf() < 0.3
+	var z: float
+	if breakable:
+		z = -120.0 + randf() * 240.0   # inside plane reach (±~120)
+	else:
+		var s: float = side
+		if absf(s) < 0.5:
+			s = -1.0 if randf() < 0.5 else 1.0
+		z = s * (340.0 + randf() * 130.0)
+	var from_ceiling: bool = allow_ceiling and (not breakable) and randf() < 0.3
 	_spawn_pillar(PillarScript.Kind.COLOSSUS, breakable, x, z, from_ceiling)
 
 
@@ -562,9 +573,10 @@ func _spawn_missle(yaw_offset_deg: float) -> void:
 
 ## "Plane = crosshair" model: the candidate is whatever hittable thing is
 ## closest to the plane's current (y, z), with a mild forward-distance penalty
-## so closer pillars still win when proximity is similar. Move the plane
-## laterally inside a cluster → the candidate naturally shifts to the one
-## you're flying next to. A vulnerable giant takes priority over pillars.
+## so closer pillars still win when proximity is similar. Cores BLOCKED by an
+## unbreakable pillar in the line of fire are skipped, so the player never
+## locks onto something a fired missile can't physically reach. A vulnerable
+## giant takes priority over pillars.
 func _pick_candidate() -> Node3D:
 	for g in _targets:
 		if g.is_giant and g.position.x <= GIANT_VULNERABLE_X and g.position.x > airplane.position.x:
@@ -577,6 +589,8 @@ func _pick_candidate() -> Node3D:
 		if pl.global_position.x <= airplane.position.x:
 			continue
 		var p: Vector3 = pl.core_world_pos()
+		if _is_los_blocked(p):
+			continue
 		var dy: float = p.y - airplane.position.y
 		var dz: float = p.z - airplane.position.z
 		var score: float = sqrt(dy * dy + dz * dz) \
@@ -585,6 +599,53 @@ func _pick_candidate() -> Node3D:
 			best_score = score
 			best = pl
 	return best
+
+
+## True if any UNBREAKABLE solid pillar sits between the plane and `target` in
+## the AABB sense. Used to filter out cores whose shot would be blocked.
+func _is_los_blocked(target: Vector3) -> bool:
+	for pl in _pillars:
+		if not is_instance_valid(pl):
+			continue
+		if pl.breakable:
+			continue
+		if not pl.is_solid_hazard():
+			continue
+		if pl.global_position.x <= airplane.position.x:
+			continue
+		if pl.global_position.x >= target.x:
+			continue
+		if _seg_pillar_aabb_hits(airplane.position, target, pl):
+			return true
+	return false
+
+
+## Slab-test: does the segment a→b intersect the pillar's current AABB?
+func _seg_pillar_aabb_hits(a: Vector3, b: Vector3, pl: Node3D) -> bool:
+	var d: Vector3 = b - a
+	var cy: float = (pl.emerged_top_y + pl.emerged_bottom_y) * 0.5
+	var hy: float = (pl.emerged_top_y - pl.emerged_bottom_y) * 0.5
+	var center: Vector3 = Vector3(pl.global_position.x, cy, pl.global_position.z)
+	var half: Vector3 = Vector3(pl.w * 0.5, hy, pl.d * 0.5)
+	var t_min: float = 0.0
+	var t_max: float = 1.0
+	for i in 3:
+		if absf(d[i]) < 0.0001:
+			if absf(a[i] - center[i]) > half[i]:
+				return false
+			continue
+		var inv: float = 1.0 / d[i]
+		var t1: float = (center[i] - half[i] - a[i]) * inv
+		var t2: float = (center[i] + half[i] - a[i]) * inv
+		if t1 > t2:
+			var tmp: float = t1
+			t1 = t2
+			t2 = tmp
+		t_min = maxf(t_min, t1)
+		t_max = minf(t_max, t2)
+		if t_min > t_max:
+			return false
+	return true
 
 
 func _is_giant_node(node: Node3D) -> bool:
@@ -710,9 +771,11 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> void:
 
 	# Moment text — First Hit happens at most once per run; Tier Up at each new
 	# threshold. They land OVER the action so the player FEELS the milestone.
+	# First Hit teaches the COMBO concept with a "+1 COMBO" subtitle (the player
+	# learns that hitting cores grows a counter).
 	if not _seen_first_hit:
 		_seen_first_hit = true
-		_show_moment("First Hit!", Color(1.0, 0.95, 0.55), 72)
+		_show_moment("First Hit!", Color(1.0, 0.95, 0.55), 72, "+1 COMBO")
 	_bump_combo_widget()
 
 	var pos: Vector3 = pl.core_world_pos()
@@ -972,8 +1035,19 @@ func _build_title_overlay() -> void:
 	vbox.add_child(sub)
 
 	var spacer := Control.new()
-	spacer.custom_minimum_size = Vector2(0, 60)
+	spacer.custom_minimum_size = Vector2(0, 44)
 	vbox.add_child(spacer)
+
+	# Mini-guide — silently teaches the core loop so the player knows what to
+	# do without a tutorial. Cheapest fix for the "what is combo?" UX hole.
+	var guide := _make_centered_label("Shoot red cores in a row  →  bigger missile", 16, Color(1, 1, 1, 0.7))
+	vbox.add_child(guide)
+	var guide2 := _make_centered_label("Reach TIER 2 to beat the Giant", 16, Color(1, 1, 1, 0.6))
+	vbox.add_child(guide2)
+
+	var spacer2 := Control.new()
+	spacer2.custom_minimum_size = Vector2(0, 28)
+	vbox.add_child(spacer2)
 
 	_tap_label = _make_centered_label("TAP TO START", 28, Color(1, 1, 1, 1))
 	vbox.add_child(_tap_label)
@@ -1145,8 +1219,31 @@ func _hide_legacy_labels() -> void:
 
 ## Centered pop-up text that hangs for a beat and floats up out. Used for the
 ## key emotional beats — First Hit, Tier Up, Giant Down, Overcharge — so the
-## player FEELS the milestone instead of just seeing a number tick.
-func _show_moment(text: String, color: Color = Color(1, 1, 1, 1), font_size: int = 64) -> void:
+## player FEELS the milestone instead of just seeing a number tick. Optional
+## `subtitle` line below (smaller, dimmer) is used to TEACH on the first beat
+## (e.g. "+1 COMBO" under "First Hit!").
+func _show_moment(text: String, color: Color = Color(1, 1, 1, 1), font_size: int = 64,
+		subtitle: String = "") -> void:
+	# Outer Control anchored at upper-centre so animating its scale+alpha moves
+	# the whole stack (title + subtitle) together.
+	var holder := Control.new()
+	holder.anchor_left = 0.5; holder.anchor_right = 0.5
+	holder.anchor_top = 0.4; holder.anchor_bottom = 0.4
+	var w: float = 800.0; var h: float = 180.0
+	holder.offset_left = -w * 0.5; holder.offset_right = w * 0.5
+	holder.offset_top = -h * 0.5; holder.offset_bottom = h * 0.5
+	holder.pivot_offset = Vector2(w * 0.5, h * 0.5)
+	holder.modulate.a = 0.0
+	holder.scale = Vector2(0.3, 0.3)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(holder)
+
+	var vbox := VBoxContainer.new()
+	vbox.anchor_right = 1.0; vbox.anchor_bottom = 1.0
+	vbox.alignment = BoxContainer.ALIGNMENT_CENTER
+	vbox.add_theme_constant_override("separation", 4)
+	holder.add_child(vbox)
+
 	var l := Label.new()
 	l.text = text
 	l.add_theme_font_size_override("font_size", font_size)
@@ -1154,30 +1251,27 @@ func _show_moment(text: String, color: Color = Color(1, 1, 1, 1), font_size: int
 	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
 	l.add_theme_constant_override("outline_size", 5)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	l.anchor_left = 0.5; l.anchor_right = 0.5
-	l.anchor_top = 0.4; l.anchor_bottom = 0.4
-	var w: float = 800.0; var h: float = 140.0
-	l.offset_left = -w * 0.5; l.offset_right = w * 0.5
-	l.offset_top = -h * 0.5; l.offset_bottom = h * 0.5
-	l.pivot_offset = Vector2(w * 0.5, h * 0.5)
-	l.modulate.a = 0.0
-	l.scale = Vector2(0.3, 0.3)
-	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	hud.add_child(l)
+	vbox.add_child(l)
+
+	if subtitle != "":
+		var sub := Label.new()
+		sub.text = subtitle
+		sub.add_theme_font_size_override("font_size", int(font_size * 0.42))
+		sub.add_theme_color_override("font_color", Color(color.r, color.g, color.b, 0.92))
+		sub.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.85))
+		sub.add_theme_constant_override("outline_size", 3)
+		sub.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		vbox.add_child(sub)
 
 	var tw := create_tween()
-	# Phase 1 — pop in (back-out ease)
-	tw.tween_property(l, "modulate:a", 1.0, 0.12)
-	tw.parallel().tween_property(l, "scale", Vector2.ONE, 0.28) \
+	tw.tween_property(holder, "modulate:a", 1.0, 0.12)
+	tw.parallel().tween_property(holder, "scale", Vector2.ONE, 0.28) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
-	# Phase 2 — hold
 	tw.tween_interval(0.7)
-	# Phase 3 — drift up + fade
-	tw.tween_property(l, "modulate:a", 0.0, 0.35)
-	tw.parallel().tween_property(l, "offset_top", l.offset_top - 30.0, 0.35)
-	tw.parallel().tween_property(l, "offset_bottom", l.offset_bottom - 30.0, 0.35)
-	tw.tween_callback(l.queue_free)
+	tw.tween_property(holder, "modulate:a", 0.0, 0.35)
+	tw.parallel().tween_property(holder, "offset_top", holder.offset_top - 30.0, 0.35)
+	tw.parallel().tween_property(holder, "offset_bottom", holder.offset_bottom - 30.0, 0.35)
+	tw.tween_callback(holder.queue_free)
 
 
 func _bump_combo_widget() -> void:
