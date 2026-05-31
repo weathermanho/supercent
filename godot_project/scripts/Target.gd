@@ -38,53 +38,31 @@ func _build_normal() -> void:
 
 
 func _build_giant() -> void:
-	# Sized so the composite reads as a distinct boss silhouette against the
-	# teal sky rather than engulfing the camera. Colored near-black so it reads
-	# as a dark silhouette (the reference's giant is a dark shape against a
-	# bright cool sky), with a red emissive accent that pops as the "lock here".
-	const R := 70.0
+	# A single colossal slab — monolithic, intense, no composite parts. Reads
+	# as a giant concrete bunker. A glowing red band wraps the upper-middle as
+	# the lock-on / weak-point accent.
+	const W := 280.0
+	const H := 480.0
+	const D := 280.0
 
-	# Base orb.
-	var orb := SphereMesh.new()
-	orb.radius = R
-	orb.height = R * 2.0
-	orb.radial_segments = 32
-	orb.rings = 20
-	var orb_mat := _make_mat(GameColors.BROWN_DARK, 0.85)
-	var orb_mi := MeshInstance3D.new()
-	orb_mi.mesh = orb
-	orb_mi.set_surface_override_material(0, orb_mat)
-	add_child(orb_mi)
-	_parts.append(orb_mi)
-	_mats.append(orb_mat)
-
-	# Body — column on top of the orb (the "rider" silhouette).
-	var body_mi: MeshInstance3D = BoxFactory.make_box(40, 60, 34, GameColors.BROWN_DARK)
-	body_mi.position = Vector3(0.0, R + 30.0, 0.0)
+	var body_mi: MeshInstance3D = BoxFactory.make_box(W, H, D, GameColors.BROWN_DARK)
 	add_child(body_mi)
 	_parts.append(body_mi)
 	var body_mat := _wrap_first_material(body_mi, GameColors.BROWN_DARK)
 	if body_mat: _mats.append(body_mat)
 
-	# Head.
-	var head_mi: MeshInstance3D = BoxFactory.make_box(24, 24, 20, GameColors.BROWN_DARK)
-	head_mi.position = Vector3(0.0, R + 60.0 + 12.0, 0.0)
-	add_child(head_mi)
-	_parts.append(head_mi)
-	var head_mat := _wrap_first_material(head_mi, GameColors.BROWN_DARK)
-	if head_mat: _mats.append(head_mat)
-
-	# Red cap — emissive accent / lock indicator.
-	var cap_mi: MeshInstance3D = BoxFactory.make_box(6, 34, 5, GameColors.RED)
-	cap_mi.position = Vector3(0.0, R + 60.0 + 24.0 + 17.0, 0.0)
-	add_child(cap_mi)
-	_parts.append(cap_mi)
-	var cap_mat := _wrap_first_material(cap_mi, GameColors.RED)
-	if cap_mat:
-		cap_mat.emission_enabled = true
-		cap_mat.emission = GameColors.RED
-		cap_mat.emission_energy_multiplier = 2.5
-		_mats.append(cap_mat)
+	# Red emissive band wrapping the upper-middle — the "shoot here" cue.
+	var band_h := H * 0.18
+	var band_mi: MeshInstance3D = BoxFactory.make_box(W * 1.02, band_h, D * 1.02, GameColors.RED)
+	band_mi.position = Vector3(0.0, H * 0.18, 0.0)
+	add_child(band_mi)
+	_parts.append(band_mi)
+	var band_mat := _wrap_first_material(band_mi, GameColors.RED)
+	if band_mat:
+		band_mat.emission_enabled = true
+		band_mat.emission = GameColors.RED
+		band_mat.emission_energy_multiplier = 2.8
+		_mats.append(band_mat)
 
 
 func _make_mat(c: Color, rough: float) -> StandardMaterial3D:

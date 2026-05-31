@@ -47,6 +47,10 @@ var core_alive: bool = false
 ## HP for breakable cores. Big targets (colossi) take multiple hits — the
 ## "target size reflects hit count" rule. Normal / spike / fake all = 1.
 var core_hp: int = 1
+## True for pillars Main spawns AROUND the giant — they scroll at the giant's
+## reduced pace so they stay with him through the approach instead of zooming
+## past the player before he arrives.
+var is_giant_escort: bool = false
 
 var _body: MeshInstance3D
 var _core: MeshInstance3D
@@ -170,7 +174,10 @@ func _ready() -> void:
 ## be removed.
 func step(dt_ms: float, plane_x: float) -> bool:
 	var delta: float = dt_ms / 1000.0
-	position.x -= GameConfig.speed * dt_ms * GameConfig.ennemies_speed * 5000.0
+	# Giant-escort pillars travel at the giant's slower (0.6×) scroll so they
+	# stay around him through the entire approach + climax.
+	var scroll_mult: float = 0.6 if is_giant_escort else 1.0
+	position.x -= GameConfig.speed * dt_ms * GameConfig.ennemies_speed * 5000.0 * scroll_mult
 
 	match _phase:
 		Phase.PRE:

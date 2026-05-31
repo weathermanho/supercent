@@ -498,30 +498,42 @@ func _construct_giant() -> void:
 	var giant := TargetScene.instantiate()
 	giant.is_giant = true
 	add_child(giant)
-	giant.position = Vector3(2200.0, 170.0, 0.0)
-	giant.scale = Vector3.ONE * 2.2   # loom huge — the screen-erasing climax
+	giant.position = Vector3(2200.0, 140.0, 0.0)
 	giant.wall = null
 	_targets.append(giant)
 	# Surround the climax with breakable cores so the giant isn't alone on stage
-	# and so the OVERCHARGE chain has real fuel to propagate through.
-	_spawn_giant_escort()
+	# and so the OVERCHARGE chain has real fuel to propagate through. Marked as
+	# escort so they scroll at the giant's pace and stay with him.
+	_spawn_giant_escort(giant.position.x)
 
 
-## Breakable-pillar "honor guard" that fills the giant's approach zone. Lanes
-## are inside plane reach so each one is a real combo opportunity / OVERCHARGE
-## node, not just dressing.
-func _spawn_giant_escort() -> void:
-	var lanes: Array[float] = [-180.0, -90.0, 0.0, 90.0, 180.0]
-	lanes.shuffle()
-	# A first wedge ~ahead of giant (player sees these first), then a second
-	# layer flanking + behind the giant for the post-kill OVERCHARGE chain.
-	for i in 5:
-		_spawn_pillar(PillarScript.Kind.NORMAL, true,
-			1700.0 + i * 220.0 + randf() * 60.0, lanes[i], false)
+## Breakable-pillar "honor guard" that scrolls AT THE GIANT'S PACE so the giant
+## isn't standing alone by the time he becomes vulnerable. Wraps the giant on
+## all sides (in front, flanks, behind) for both combo-building during the
+## approach and the post-kill OVERCHARGE chain.
+func _spawn_giant_escort(gx: float) -> void:
+	# Layer 1 — front wedge (player meets these first as the giant looms).
+	var front_lanes: Array[float] = [-200.0, -100.0, 100.0, 200.0]
+	front_lanes.shuffle()
+	for i in 4:
+		_spawn_escort_pillar(gx - 500.0 + i * 80.0 + randf() * 40.0, front_lanes[i])
+	# Layer 2 — flanks (alongside the giant — these get caught in OVERCHARGE).
+	_spawn_escort_pillar(gx, -180.0)
+	_spawn_escort_pillar(gx + 60.0, 180.0)
+	# Layer 3 — rear (gives the OVERCHARGE chain something to ripple INTO).
+	var rear_lanes: Array[float] = [-160.0, -50.0, 60.0, 170.0]
+	rear_lanes.shuffle()
 	for k in 4:
-		var z: float = -160.0 + randf() * 320.0
-		_spawn_pillar(PillarScript.Kind.NORMAL, true,
-			2400.0 + k * 240.0 + randf() * 80.0, z, false)
+		_spawn_escort_pillar(gx + 280.0 + k * 110.0 + randf() * 50.0, rear_lanes[k])
+
+
+func _spawn_escort_pillar(x: float, z: float) -> void:
+	var p: Node3D = PillarScript.new()
+	p.configure(PillarScript.Kind.NORMAL, true, false)
+	p.is_giant_escort = true
+	add_child(p)
+	_pillars.append(p)
+	p.position = Vector3(x, p.position.y, z)
 
 
 func _move_targets(dt_ms: float) -> void:
