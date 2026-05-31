@@ -59,6 +59,11 @@ var _tele: MeshInstance3D
 var _tele_mat: StandardMaterial3D
 var _fake_done: bool = false
 var _pending_erupt: bool = false
+## Wireframe edges (12 thin box meshes) + a shared material that's tinted when
+## the pillar is on the plane's collision course (threat indicator).
+var _edges: Array = []
+var _edge_mat: StandardMaterial3D
+var _is_threat: bool = false
 
 # Cached for Main's collision query: current world-y of the emerged top and
 # bottom (handles both ground-up and ceiling-down orientations).
@@ -123,18 +128,31 @@ func configure(kind_: int, breakable_: bool, from_ceiling_: bool = false) -> voi
 		core_hp = 1
 
 
+func _process(_delta: float) -> void:
+	# Pulse threat indicator: warm-red emission breathes ~125bpm so it reads as
+	# "danger now". Only runs while flagged a threat — otherwise stays cold.
+	if _is_threat and _edge_mat != null:
+		_edge_mat.emission_energy_multiplier = 1.4 + 1.2 * absf(sin(Time.get_ticks_msec() * 0.009))
+
+
 func _ready() -> void:
 	position.y = _y_hidden
 
-	# Concrete body. Cool dark grey for unbreakable; a lighter, slightly warm
-	# concrete for breakable so even before the red core reads the silhouette
-	# hints "target" (image.png monolith tone). Hidden until RISING starts so
-	# no part of the pillar is visible in advance — only the ground telegraph
-	# marker warns the player something's coming.
+	# X-ray look: the body is SEMI-TRANSPARENT (you can see depth through and
+	# past stacked pillars), and the silhouette is drawn separately via 12
+	# opaque edge boxes wireframe-style. The edge material is recolored when
+	# the pillar is on the plane's collision course (threat indicator).
 	var body_color: Color = Color8(134, 126, 118) if breakable else Color8(94, 97, 104)
-	_body = BoxFactory.make_box(w, h, d, body_color)
+	_body = BoxFactory.make_transparent_box(w, h, d, body_color, 0.18)
 	_body.visible = false
 	add_child(_body)
+
+	# Edge material — shared by all 12 edge boxes of THIS pillar so we can tint
+	# them as one.
+	_edge_mat = StandardMaterial3D.new()
+	_edge_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	_edge_mat.albedo_color = Color(0.88, 0.88, 0.92)
+	_build_edges(w, h, d)
 
 	if breakable:
 		# Glowing red weak-point core on the FRONT (-X) face, at roughly plane
@@ -198,6 +216,8 @@ func step(dt_ms: float, plane_x: float) -> bool:
 				# Materialize the pillar at the moment it begins to move so
 				# nothing of it has been visible before this frame.
 				_body.visible = true
+				for e in _edges:
+					e.visible = true
 				if _core != null:
 					_core.visible = true
 		Phase.RISING:
@@ -234,6 +254,54 @@ func is_solid_hazard() -> bool:
 	if from_ceiling:
 		return emerged_bottom_y < CEILING_Y - 40.0
 	return emerged_top_y > GROUND_Y + 40.0
+
+
+## Build 12 thin BoxMesh children that trace the AABB edges of the pillar.
+## All share `_edge_mat` so tinting them as a group is a one-line change.
+func _build_edges(w_: float, h_: float, d_: float) -> void:
+	const T: float = 3.0   # edge thickness
+	var hw: float = w_ * 0.5
+	var hh: float = h_ * 0.5
+	var hd: float = d_ * 0.5
+	# 4 edges along X (top-back, top-front, bottom-back, bottom-front)
+	for sy in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			_add_edge(Vector3(w_, T, T), Vector3(0.0, sy * hh, sz * hd))
+	# 4 edges along Y (vertical, at corners)
+	for sx in [-1.0, 1.0]:
+		for sz in [-1.0, 1.0]:
+			_add_edge(Vector3(T, h_, T), Vector3(sx * hw, 0.0, sz * hd))
+	# 4 edges along Z
+	for sx in [-1.0, 1.0]:
+		for sy in [-1.0, 1.0]:
+			_add_edge(Vector3(T, T, d_), Vector3(sx * hw, sy * hh, 0.0))
+
+
+func _add_edge(size: Vector3, pos: Vector3) -> void:
+	var mesh := BoxMesh.new()
+	mesh.size = size
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.set_surface_override_material(0, _edge_mat)
+	mi.position = pos
+	mi.visible = false
+	add_child(mi)
+	_edges.append(mi)
+
+
+## Toggle threat indicator (called from Main each frame). Threat = the plane's
+## future trajectory volume intersects this pillar's AABB.
+func set_threat(threat: bool) -> void:
+	if _edge_mat == null:
+		return
+	_is_threat = threat
+	if threat:
+		_edge_mat.emission_enabled = true
+		_edge_mat.emission = Color(1.0, 0.25, 0.20)
+		_edge_mat.albedo_color = Color(1.0, 0.55, 0.45)
+	else:
+		_edge_mat.emission_enabled = false
+		_edge_mat.albedo_color = Color(0.88, 0.88, 0.92)
 
 
 ## One-shot: true on the single frame the pillar begins erupting (for camera

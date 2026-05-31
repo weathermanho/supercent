@@ -529,6 +529,21 @@ func _filter_invalid_pillars() -> void:
 
 
 func _move_pillars(dt_ms: float) -> void:
+	# Plane's "swept volume" — the box ahead of the plane representing where
+	# it WILL physically be. Any pillar AABB-overlapping this box is on a
+	# collision course (threat) and will glow red. Same z/y math as the actual
+	# crash check, just extended forward in x.
+	const SWEEP_LEN: float = 2500.0
+	const SWEEP_HALF_Y: float = 22.0
+	const SWEEP_HALF_Z: float = 30.0
+	var p: Vector3 = airplane.position
+	var sweep_x_min: float = p.x
+	var sweep_x_max: float = p.x + SWEEP_LEN
+	var sweep_y_min: float = p.y - SWEEP_HALF_Y
+	var sweep_y_max: float = p.y + SWEEP_HALF_Y
+	var sweep_z_min: float = p.z - SWEEP_HALF_Z
+	var sweep_z_max: float = p.z + SWEEP_HALF_Z
+
 	var to_remove: Array[int] = []
 	for i in _pillars.size():
 		var pl := _pillars[i]
@@ -538,6 +553,19 @@ func _move_pillars(dt_ms: float) -> void:
 			to_remove.append(i)
 			continue
 		var alive: bool = pl.step(dt_ms, airplane.position.x)
+
+		# Threat check — does this pillar overlap the plane's swept volume?
+		var is_threat: bool = false
+		if pl.is_solid_hazard():
+			var pl_x_min: float = pl.global_position.x - pl.w * 0.5
+			var pl_x_max: float = pl.global_position.x + pl.w * 0.5
+			var pl_z_min: float = pl.global_position.z - pl.d * 0.5
+			var pl_z_max: float = pl.global_position.z + pl.d * 0.5
+			if pl_x_max > sweep_x_min and pl_x_min < sweep_x_max \
+			and pl_z_max > sweep_z_min and pl_z_min < sweep_z_max \
+			and pl.emerged_top_y > sweep_y_min and pl.emerged_bottom_y < sweep_y_max:
+				is_threat = true
+		pl.set_threat(is_threat)
 
 		# Eruption punch — a spike snapping up kicks the camera.
 		if pl.consume_erupt():
