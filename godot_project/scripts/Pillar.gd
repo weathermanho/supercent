@@ -138,20 +138,22 @@ func _process(_delta: float) -> void:
 func _ready() -> void:
 	position.y = _y_hidden
 
-	# X-ray look: the body is SEMI-TRANSPARENT (you can see depth through and
-	# past stacked pillars), and the silhouette is drawn separately via 12
-	# opaque edge boxes wireframe-style. The edge material is recolored when
-	# the pillar is on the plane's collision course (threat indicator).
+	# Opaque concrete body — needed so individual pillars READ as separate
+	# objects (semi-transparent versions blurred together visually). The 12
+	# edge boxes are drawn SEPARATELY with no_depth_test so the threat colour
+	# is always visible on top of the body.
 	var body_color: Color = Color8(134, 126, 118) if breakable else Color8(94, 97, 104)
-	_body = BoxFactory.make_transparent_box(w, h, d, body_color, 0.18)
+	_body = BoxFactory.make_box(w, h, d, body_color)
 	_body.visible = false
 	add_child(_body)
 
 	# Edge material — shared by all 12 edge boxes of THIS pillar so we can tint
-	# them as one.
+	# them as one. no_depth_test keeps the edges visible on top of the opaque
+	# body (threat colour can't be hidden by the box itself).
 	_edge_mat = StandardMaterial3D.new()
 	_edge_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	_edge_mat.albedo_color = Color(0.88, 0.88, 0.92)
+	_edge_mat.no_depth_test = true
 	_build_edges(w, h, d)
 
 	if breakable:
