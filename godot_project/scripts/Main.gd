@@ -1553,55 +1553,63 @@ func _add_ultimate_charge(amount: float) -> void:
 			_show_moment("ULT READY!", Color(1.0, 0.88, 0.28), 64, "right-click / SPACE")
 
 
-## Spend the full ultimate gauge to fire a screen-clearing fan of T3 missiles.
-## Each missile is at maximum tier / pierce, skips the drop phase (fires
-## immediately forward), and is assigned a unique target from the visible
-## hittable pool so the salvo SPREADS across the field instead of bunching.
+## Spend the full ultimate gauge to detonate every visible breakable pillar in
+## a shockwave ripple expanding outward from the plane. The chain happens in
+## under a second; the player sees a SINGLE clear event ("BOOM, everything
+## gone") instead of a confusing missile cloud. Counter in the moment text
+## shows exactly how many targets were cleared — "ULTIMATE! 7 TARGETS CLEARED".
 func _fire_ultimate() -> void:
 	if GameConfig.ultimate_gauge < GameConfig.ultimate_gauge_max:
 		return
 	GameConfig.ultimate_gauge = 0.0
 
-	_show_moment("ULTIMATE!", Color(1.0, 0.85, 0.3), 110)
-	flash_overlay.flash(0.6, 0.45, false)
-	shaker.shake(GameConfig.shake_giant_intensity * 1.4, 0.55)
-	time_scaler.request_slowmo(0.4, 0.55)
+	flash_overlay.flash(0.7, 0.5, false)
+	shaker.shake(GameConfig.shake_giant_intensity * 1.5, 0.65)
+	time_scaler.request_slowmo(0.35, 1.1)
+	# A bright ring expanding from the plane reads as the "release" pulse.
+	_spawn_shockwave(airplane.position + Vector3(20.0, 20.0, 0.0), 140.0, 1.0)
 
-	# Build a target pool: hittable pillar cores + vulnerable giant.
-	var targets: Array = []
-	for pl in _pillars:
+	# Sort every solid-hazard pillar by distance from the plane so the chain
+	# RIPPLES OUT (nearest first). Staggered timers fire each detonation.
+	var plane_pos: Vector3 = airplane.position
+	var ordered: Array = _pillars.duplicate()
+	ordered.sort_custom(func(a, b):
+		if not is_instance_valid(a):
+			return false
+		if not is_instance_valid(b):
+			return true
+		return a.global_position.distance_squared_to(plane_pos) \
+			< b.global_position.distance_squared_to(plane_pos))
+
+	var target_count: int = 0
+	var delay: float = 0.05
+	for pl in ordered:
 		if not is_instance_valid(pl):
 			continue
-		if not pl.is_core_hittable():
+		if not pl.is_solid_hazard():
 			continue
-		targets.append(pl.core_node())
-	for gt in _targets:
-		if gt.is_giant and gt.position.x <= GIANT_VULNERABLE_X \
-		and gt.position.x > airplane.position.x:
-			targets.append(gt)
-	targets.shuffle()
+		get_tree().create_timer(delay).timeout.connect(_ult_blast.bind(pl))
+		delay += 0.05
+		target_count += 1
 
-	# Fire a fan of 12 high-power missiles in a forward arc.
-	var count: int = 12
-	for i in count:
-		var m: Node3D = MissleScene.instantiate()
-		add_child(m)
-		_missles.append(m)
-		var lane_off: float = float((i % 3) - 1) * 6.0
-		m.position = airplane.position + Vector3(10.0, -4.0 + lane_off, 0.0)
-		m.missile_scale = GameConfig.missile_tier_scales[3]
-		m.tier = 3
-		m.pierce = 3
-		# Skip the drop phase — ULT missiles boost out immediately.
-		m._boost_started = true
-		m.time_alive = GameConfig.missile_drop_duration + 0.001
-		var angle_deg: float = (float(i) - float(count - 1) * 0.5) * 8.0   # ±44°
-		var rad: float = deg_to_rad(angle_deg)
-		m.velocity = Vector3(cos(rad), 0.0, sin(rad)) * 600.0
-		if targets.size() > 0:
-			m.target = targets[i % targets.size()]
-		else:
-			m.target = null
+	var subtitle: String = ""
+	if target_count > 0:
+		subtitle = "%d TARGETS CLEARED" % target_count
+	else:
+		subtitle = "FIELD CLEAR"
+	_show_moment("ULTIMATE!", Color(1.0, 0.85, 0.3), 110, subtitle)
+
+
+## Single pillar's ULT chain detonation — scheduled by staggered timers. Safe
+## against freed / non-hazard pillars.
+func _ult_blast(pl: Node3D) -> void:
+	if not is_instance_valid(pl):
+		return
+	if not pl.is_solid_hazard():
+		return
+	_spawn_explosion(pl.global_position, SmokeBurstScript.Kind.PILLAR_BREAK, 4.0)
+	if pl.breakable and pl.core_alive:
+		pl.shatter()
 
 
 ## Color tied to combo tier — white -> warm yellow -> orange -> hot red.
