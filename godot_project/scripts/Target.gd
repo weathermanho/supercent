@@ -38,30 +38,73 @@ func _build_normal() -> void:
 
 
 func _build_giant() -> void:
-	# A single colossal slab — monolithic, intense, no composite parts. Reads
-	# as a giant concrete bunker. A glowing red band wraps the upper-middle as
-	# the lock-on / weak-point accent.
-	const W := 280.0
-	const H := 480.0
-	const D := 280.0
+	# A fortress monolith: thick concrete slab body + stepped upper block +
+	# a tall red emissive antenna spire on top + a glowing vertical core strip
+	# on the FRONT face (the player aims at this) + a wide red band wrapping
+	# the upper third. Reads as an intimidating bunker with a beacon — not a
+	# featureless slab.
+	const W := 320.0
+	const H := 460.0
+	const D := 320.0
 
+	# Main slab.
 	var body_mi: MeshInstance3D = BoxFactory.make_box(W, H, D, GameColors.BROWN_DARK)
 	add_child(body_mi)
 	_parts.append(body_mi)
 	var body_mat := _wrap_first_material(body_mi, GameColors.BROWN_DARK)
 	if body_mat: _mats.append(body_mat)
 
-	# Red emissive band wrapping the upper-middle — the "shoot here" cue.
-	var band_h := H * 0.18
-	var band_mi: MeshInstance3D = BoxFactory.make_box(W * 1.02, band_h, D * 1.02, GameColors.RED)
-	band_mi.position = Vector3(0.0, H * 0.18, 0.0)
+	# Stepped upper block — narrower roof section sitting on the main slab.
+	const UW := 220.0
+	const UH := 120.0
+	const UD := 220.0
+	var upper_mi: MeshInstance3D = BoxFactory.make_box(UW, UH, UD, GameColors.BROWN_DARK)
+	upper_mi.position = Vector3(0.0, H * 0.5 + UH * 0.5, 0.0)
+	add_child(upper_mi)
+	_parts.append(upper_mi)
+	var upper_mat := _wrap_first_material(upper_mi, GameColors.BROWN_DARK)
+	if upper_mat: _mats.append(upper_mat)
+
+	# Tall red antenna spire — towers above the stepped block, beacon-bright.
+	const SW := 38.0
+	const SH := 180.0
+	const SD := 38.0
+	var spire_mi: MeshInstance3D = BoxFactory.make_box(SW, SH, SD, GameColors.RED)
+	spire_mi.position = Vector3(0.0, H * 0.5 + UH + SH * 0.5, 0.0)
+	add_child(spire_mi)
+	_parts.append(spire_mi)
+	var spire_mat := _wrap_first_material(spire_mi, GameColors.RED)
+	if spire_mat:
+		spire_mat.emission_enabled = true
+		spire_mat.emission = GameColors.RED
+		spire_mat.emission_energy_multiplier = 3.2
+		_mats.append(spire_mat)
+
+	# Vertical red core strip on the FRONT face (-X), where the player faces it.
+	var strip_w_y := H * 0.55
+	var strip_d_z := W * 0.22
+	var strip_mi: MeshInstance3D = BoxFactory.make_box(8.0, strip_w_y, strip_d_z, GameColors.RED)
+	strip_mi.position = Vector3(-W * 0.5 - 4.0, 0.0, 0.0)
+	add_child(strip_mi)
+	_parts.append(strip_mi)
+	var strip_mat := _wrap_first_material(strip_mi, GameColors.RED)
+	if strip_mat:
+		strip_mat.emission_enabled = true
+		strip_mat.emission = GameColors.RED
+		strip_mat.emission_energy_multiplier = 3.0
+		_mats.append(strip_mat)
+
+	# Red horizontal band wrapping the upper third.
+	var band_h := H * 0.12
+	var band_mi: MeshInstance3D = BoxFactory.make_box(W * 1.04, band_h, D * 1.04, GameColors.RED)
+	band_mi.position = Vector3(0.0, H * 0.28, 0.0)
 	add_child(band_mi)
 	_parts.append(band_mi)
 	var band_mat := _wrap_first_material(band_mi, GameColors.RED)
 	if band_mat:
 		band_mat.emission_enabled = true
 		band_mat.emission = GameColors.RED
-		band_mat.emission_energy_multiplier = 2.8
+		band_mat.emission_energy_multiplier = 2.6
 		_mats.append(band_mat)
 
 

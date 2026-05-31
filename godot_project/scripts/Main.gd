@@ -498,7 +498,7 @@ func _construct_giant() -> void:
 	var giant := TargetScene.instantiate()
 	giant.is_giant = true
 	add_child(giant)
-	giant.position = Vector3(2200.0, 140.0, 0.0)
+	giant.position = Vector3(2200.0, 110.0, 0.0)   # main slab bottom on the floor
 	giant.wall = null
 	_targets.append(giant)
 	# Surround the climax with breakable cores so the giant isn't alone on stage

@@ -265,21 +265,17 @@ func is_core_hittable() -> bool:
 
 ## Apply one core hit. Returns true if THIS hit was the killing blow (the
 ## caller plays the full death juice + combo bookkeeping in that case). When
-## false, the pillar absorbs a chip — body tints darker so the player sees
-## visible progress on big targets that take multiple shots.
+## false, the pillar absorbs a chip — body scale-punches so the hit is FELT
+## (chip explosion VFX is spawned by the caller).
 func take_core_damage() -> bool:
 	core_hp -= 1
 	if core_hp <= 0:
 		shatter()
 		return true
-	# Chip — visually drop the body toward red-tinted concrete + briefly punch
-	# the body scale so a hit is FELT even though the pillar is still standing.
 	if _body != null:
-		var tint_step: float = 0.18
-		_body.modulate = _body.modulate.lerp(Color(1.2, 0.7, 0.6, 1.0), tint_step)
-		_body.scale = Vector3(1.07, 1.07, 1.07)
+		_body.scale = Vector3(1.08, 1.08, 1.08)
 		var tw := create_tween()
-		tw.tween_property(_body, "scale", Vector3.ONE, 0.16) \
+		tw.tween_property(_body, "scale", Vector3.ONE, 0.18) \
 			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
 	return false
 
