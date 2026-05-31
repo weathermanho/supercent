@@ -82,6 +82,15 @@ var _gameover_combo: Label
 var _gameover_giants: Label
 var _gameover_tap: Label
 
+# --- In-play HUD widgets (replace the legacy labels) --------------------------
+var _hud_dist: Label
+var _hud_dist_caption: Label
+var _hud_best: Label
+var _hud_combo: Label
+var _hud_tier: Label
+var _hud_heart_rects: Array = []
+var _seen_first_hit: bool = false
+
 
 func _ready() -> void:
 	GameConfig.reset_to_defaults()
@@ -110,6 +119,8 @@ func _ready() -> void:
 	# stops mid-air.
 	_build_title_overlay()
 	_build_gameover_overlay()
+	_build_play_hud()
+	_hide_legacy_labels()
 	_show_title()
 
 
@@ -450,6 +461,7 @@ func _move_pillars(dt_ms: float) -> void:
 
 func _on_crash(pl: Node3D) -> void:
 	GameConfig.hp -= 1
+	_animate_heart_lost(GameConfig.hp)
 	GameConfig.reset_combo()
 	GameConfig.crash_iframes = GameConfig.crash_iframes_max
 
@@ -696,11 +708,19 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> void:
 	if GameConfig.combo_tier > _max_tier_run:
 		_max_tier_run = GameConfig.combo_tier
 
+	# Moment text — First Hit happens at most once per run; Tier Up at each new
+	# threshold. They land OVER the action so the player FEELS the milestone.
+	if not _seen_first_hit:
+		_seen_first_hit = true
+		_show_moment("First Hit!", Color(1.0, 0.95, 0.55), 72)
+	_bump_combo_widget()
+
 	var pos: Vector3 = pl.core_world_pos()
 	_spawn_explosion(pos, SmokeBurstScript.Kind.PILLAR_BREAK, float(m.tier + 1))
 
 	# Tier-up celebration.
 	if GameConfig.combo_tier > prev_tier:
+		_show_moment("Tier %d!" % GameConfig.combo_tier, _tier_color(GameConfig.combo_tier), 88)
 		shaker.shake(GameConfig.shake_hit_intensity * 1.6, 0.2)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.4)
 		flash_overlay.flash(0.28, 0.12, false)
@@ -726,6 +746,7 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 
 	# Giant defeated: bump the run-stats counter for the recap screen.
 	_giants_killed_run += 1
+	_show_moment("Giant Down!", Color(1.0, 0.45, 0.25), 92)
 	# Finish: full showpiece combo — a cluster of big plumes across the giant so
 	# it reads as a screen-erasing detonation.
 	time_scaler.request_slowmo(GameConfig.slowmo_giant_scale, GameConfig.slowmo_giant_duration)
@@ -735,6 +756,23 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 		var off := Vector3((randf() - 0.5) * 220.0, (randf() - 0.5) * 260.0, (randf() - 0.5) * 160.0)
 		_spawn_explosion(g.position + off, SmokeBurstScript.Kind.GIANT_FINISH, 3.0 + randf())
 	_spawn_shockwave(g.position, 60.0, 1.0)
+
+	# OVERCHARGE — killing the giant at max tier (T3) cascade-detonates every
+	# breakable pillar on the field. Earns the player a screen-clearing reward
+	# for arriving strong. (Appendix C: P2 과충전 폭발.)
+	if GameConfig.combo_tier >= 3:
+		_show_moment("OVERCHARGE!", Color(1.0, 0.55, 0.18), 108)
+		flash_overlay.flash(0.5, 0.4, false)
+		shaker.shake(GameConfig.shake_giant_intensity * 1.2, 0.6)
+		for pl in _pillars:
+			if not is_instance_valid(pl):
+				continue
+			if not pl.is_solid_hazard():
+				continue
+			var ppos: Vector3 = pl.global_position
+			_spawn_explosion(ppos, SmokeBurstScript.Kind.PILLAR_BREAK, 3.0)
+			if pl.breakable and pl.core_alive:
+				pl.shatter()
 
 	var idx: int = _targets.find(g)
 	if idx >= 0:
@@ -880,17 +918,19 @@ func _get_world_cursor() -> Vector3:
 
 
 func _update_hud() -> void:
-	var hearts: String = "HP " + str(maxi(GameConfig.hp, 0)) + "/" + str(GameConfig.max_hp)
-	distance_label.text = "Dist %d   %s   Combo x%d (T%d)" % [
-		int(GameConfig.distance), hearts, GameConfig.combo, GameConfig.combo_tier]
-	energy_bar.value = GameConfig.energy
-	best_label.text = "Best: %d" % GameConfig.best_distance
-	if GameConfig.status == GameConfig.STATUS_GAME_OVER:
-		var is_new_best: bool = int(GameConfig.distance) > GameConfig.best_distance
-		status_label.text = ("NEW BEST!  Press R to fly again" if is_new_best
-							 else "GAME OVER  —  Press R to fly again")
-	else:
-		status_label.text = ""
+	if _hud_dist != null:
+		_hud_dist.text = "%d" % int(GameConfig.distance)
+	if _hud_best != null:
+		_hud_best.text = "Best %d" % GameConfig.best_distance
+	if _hud_combo != null:
+		_hud_combo.text = "x%d" % GameConfig.combo
+		_hud_combo.add_theme_color_override("font_color", _tier_color(GameConfig.combo_tier))
+	if _hud_tier != null:
+		_hud_tier.text = "TIER %d" % GameConfig.combo_tier
+		_hud_tier.add_theme_color_override("font_color",
+			Color(_tier_color(GameConfig.combo_tier).r,
+				  _tier_color(GameConfig.combo_tier).g,
+				  _tier_color(GameConfig.combo_tier).b, 0.85))
 
 
 func _on_game_over() -> void:
@@ -1003,6 +1043,7 @@ func _start_game() -> void:
 	_title_layer.visible = false
 	_gameover_layer.visible = false
 	_set_play_hud_visible(true)
+	_seen_first_hit = false
 
 
 func _show_gameover_screen(is_new_best: bool) -> void:
@@ -1018,10 +1059,155 @@ func _show_gameover_screen(is_new_best: bool) -> void:
 
 
 func _set_play_hud_visible(v: bool) -> void:
-	distance_label.visible = v
-	best_label.visible = v
-	energy_bar.visible = v
-	status_label.visible = v
+	if _hud_dist != null: _hud_dist.visible = v
+	if _hud_dist_caption != null: _hud_dist_caption.visible = v
+	if _hud_best != null: _hud_best.visible = v
+	if _hud_combo != null: _hud_combo.visible = v
+	if _hud_tier != null: _hud_tier.visible = v
+	for r in _hud_heart_rects:
+		r.visible = v
+
+
+# ----- New in-play HUD -------------------------------------------------------
+
+func _build_play_hud() -> void:
+	# Top-centre: big DIST number + tiny caption above
+	_hud_dist_caption = _anchored_label("DIST", 12, Color(1, 1, 1, 0.55),
+		0.5, 0.0, -80.0, 4.0, 80.0, 22.0, HORIZONTAL_ALIGNMENT_CENTER)
+	hud.add_child(_hud_dist_caption)
+
+	_hud_dist = _anchored_label("0", 48, Color(1, 1, 1, 1.0),
+		0.5, 0.0, -160.0, 22.0, 160.0, 80.0, HORIZONTAL_ALIGNMENT_CENTER)
+	_hud_dist.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+	_hud_dist.add_theme_constant_override("outline_size", 3)
+	hud.add_child(_hud_dist)
+	_hud_dist.pivot_offset = Vector2(160.0, 40.0)
+
+	# Top-left: HP hearts row
+	for i in 3:
+		var r := ColorRect.new()
+		r.color = Color(0.96, 0.27, 0.27)
+		r.size = Vector2(24.0, 24.0)
+		r.position = Vector2(18.0 + i * 32.0, 20.0)
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		r.pivot_offset = Vector2(12.0, 12.0)
+		hud.add_child(r)
+		_hud_heart_rects.append(r)
+
+	# Top-right: COMBO + TIER badge
+	_hud_combo = _anchored_label("x0", 30, Color(1, 1, 1, 1.0),
+		1.0, 0.0, -150.0, 16.0, -16.0, 56.0, HORIZONTAL_ALIGNMENT_RIGHT)
+	_hud_combo.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.6))
+	_hud_combo.add_theme_constant_override("outline_size", 2)
+	hud.add_child(_hud_combo)
+	_hud_combo.pivot_offset = Vector2(134.0, 18.0)
+
+	_hud_tier = _anchored_label("TIER 0", 14, Color(1, 1, 1, 0.7),
+		1.0, 0.0, -150.0, 50.0, -16.0, 70.0, HORIZONTAL_ALIGNMENT_RIGHT)
+	hud.add_child(_hud_tier)
+
+	# Top-left under hearts: BEST
+	_hud_best = _anchored_label("Best 0", 14, Color(1, 1, 1, 0.55),
+		0.0, 0.0, 18.0, 52.0, 200.0, 72.0, HORIZONTAL_ALIGNMENT_LEFT)
+	hud.add_child(_hud_best)
+
+
+## Build a Label with explicit anchor + offset rectangle. The anchor pins it
+## to a screen edge (e.g. 0.5/0.0 = top-centre, 1.0/0.0 = top-right).
+func _anchored_label(text: String, font_size: int, color: Color,
+		anchor_x: float, anchor_y: float, ox_l: float, oy_t: float,
+		ox_r: float, oy_b: float, halign: int) -> Label:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", font_size)
+	l.add_theme_color_override("font_color", color)
+	l.anchor_left = anchor_x
+	l.anchor_right = anchor_x
+	l.anchor_top = anchor_y
+	l.anchor_bottom = anchor_y
+	l.offset_left = ox_l
+	l.offset_top = oy_t
+	l.offset_right = ox_r
+	l.offset_bottom = oy_b
+	l.horizontal_alignment = halign
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	return l
+
+
+func _hide_legacy_labels() -> void:
+	distance_label.visible = false
+	best_label.visible = false
+	status_label.visible = false
+	energy_bar.visible = false
+
+
+# ----- Moment texts ----------------------------------------------------------
+
+## Centered pop-up text that hangs for a beat and floats up out. Used for the
+## key emotional beats — First Hit, Tier Up, Giant Down, Overcharge — so the
+## player FEELS the milestone instead of just seeing a number tick.
+func _show_moment(text: String, color: Color = Color(1, 1, 1, 1), font_size: int = 64) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", font_size)
+	l.add_theme_color_override("font_color", color)
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 1))
+	l.add_theme_constant_override("outline_size", 5)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.anchor_left = 0.5; l.anchor_right = 0.5
+	l.anchor_top = 0.4; l.anchor_bottom = 0.4
+	var w: float = 800.0; var h: float = 140.0
+	l.offset_left = -w * 0.5; l.offset_right = w * 0.5
+	l.offset_top = -h * 0.5; l.offset_bottom = h * 0.5
+	l.pivot_offset = Vector2(w * 0.5, h * 0.5)
+	l.modulate.a = 0.0
+	l.scale = Vector2(0.3, 0.3)
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(l)
+
+	var tw := create_tween()
+	# Phase 1 — pop in (back-out ease)
+	tw.tween_property(l, "modulate:a", 1.0, 0.12)
+	tw.parallel().tween_property(l, "scale", Vector2.ONE, 0.28) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	# Phase 2 — hold
+	tw.tween_interval(0.7)
+	# Phase 3 — drift up + fade
+	tw.tween_property(l, "modulate:a", 0.0, 0.35)
+	tw.parallel().tween_property(l, "offset_top", l.offset_top - 30.0, 0.35)
+	tw.parallel().tween_property(l, "offset_bottom", l.offset_bottom - 30.0, 0.35)
+	tw.tween_callback(l.queue_free)
+
+
+func _bump_combo_widget() -> void:
+	if _hud_combo == null:
+		return
+	_hud_combo.scale = Vector2(1.35, 1.35)
+	var tw := create_tween()
+	tw.tween_property(_hud_combo, "scale", Vector2.ONE, 0.18) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+func _animate_heart_lost(slot: int) -> void:
+	if slot < 0 or slot >= _hud_heart_rects.size():
+		return
+	var r: ColorRect = _hud_heart_rects[slot]
+	# Quick scale punch then dim grey.
+	r.scale = Vector2(1.6, 1.6)
+	var tw := create_tween()
+	tw.tween_property(r, "scale", Vector2.ONE, 0.18) \
+		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(r, "color", Color(0.3, 0.3, 0.3, 0.5), 0.18)
+
+
+## Color tied to combo tier — white -> warm yellow -> orange -> hot red.
+func _tier_color(tier: int) -> Color:
+	match tier:
+		1: return Color(1.0, 0.95, 0.55)
+		2: return Color(1.0, 0.7, 0.30)
+		3: return Color(1.0, 0.42, 0.22)
+		_: return Color(1, 1, 1, 1)
 
 
 # ----- Input -----------------------------------------------------------------
