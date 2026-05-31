@@ -1602,14 +1602,14 @@ func _fire_ultimate() -> void:
 			< b.global_position.distance_squared_to(plane_pos))
 
 	var target_count: int = 0
-	var delay: float = 0.05
+	var delay: float = 0.08
 	for pl in ordered:
 		if not is_instance_valid(pl):
 			continue
 		if not pl.is_solid_hazard():
 			continue
 		get_tree().create_timer(delay).timeout.connect(_ult_blast.bind(pl))
-		delay += 0.05
+		delay += 0.13   # was 0.05 — wider gap so each detonation is its own beat
 		target_count += 1
 
 	var subtitle: String = ""
