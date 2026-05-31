@@ -115,6 +115,18 @@ var crash_iframes: float = 0.0
 ## hits only chip (so a sloppy approach arrives too weak to see the payoff).
 var giant_required_tier: int = 2
 
+# --- Ultimate gauge (부록 C P1: 궁극기 게이지) -------------------------------
+## Builds with every meaningful action; right-click / SPACE unleashes a
+## screen-clearing T3 missile fan when full. Gives the run an active goal
+## INSIDE every play session (retention) + a guaranteed spectacle beat (CPI).
+var ultimate_gauge: float = 0.0
+var ultimate_gauge_max: float = 100.0
+var ultimate_charge_per_kill: float = 9.0      # killing a breakable core
+var ultimate_charge_per_chip: float = 4.5      # chipping a multi-HP core
+var ultimate_charge_per_tier_up: float = 22.0  # crossing a tier threshold
+var ultimate_charge_per_giant_chip: float = 14.0
+var ultimate_charge_per_giant_kill: float = 35.0
+
 ## Loaded from user://best.save at boot. Updated on game over.
 var best_distance: int = 0
 
@@ -176,6 +188,7 @@ func reset_to_defaults() -> void:
 	combo_timer = 0.0
 	hp = max_hp
 	crash_iframes = 0.0
+	ultimate_gauge = 0.0
 
 
 # --- Combo helpers -----------------------------------------------------------

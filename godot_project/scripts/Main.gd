@@ -89,7 +89,11 @@ var _hud_best: Label
 var _hud_combo: Label
 var _hud_tier: Label
 var _hud_heart_rects: Array = []
+var _hud_ult_bg: ColorRect
+var _hud_ult_bar: ColorRect
+var _hud_ult_label: Label
 var _seen_first_hit: bool = false
+var _seen_ult_ready: bool = false
 
 
 func _ready() -> void:
@@ -905,19 +909,23 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> bool:
 		_spawn_explosion(pos, SmokeBurstScript.Kind.BLOCK_SPARK, 1.5)
 		shaker.shake(GameConfig.shake_hit_intensity * 0.7, 0.09)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration * 0.7)
+		_add_ultimate_charge(GameConfig.ultimate_charge_per_chip)
 		# Tier may still rise on a chip hit — still celebrate it.
 		if GameConfig.combo_tier > prev_tier:
 			_show_moment("Tier %d!" % GameConfig.combo_tier, _tier_color(GameConfig.combo_tier), 88)
 			flash_overlay.flash(0.22, 0.10, false)
+			_add_ultimate_charge(GameConfig.ultimate_charge_per_tier_up)
 		return false
 
 	# Kill — full juice.
 	_spawn_explosion(pos, SmokeBurstScript.Kind.PILLAR_BREAK, float(m.tier + 1))
+	_add_ultimate_charge(GameConfig.ultimate_charge_per_kill)
 	if GameConfig.combo_tier > prev_tier:
 		_show_moment("Tier %d!" % GameConfig.combo_tier, _tier_color(GameConfig.combo_tier), 88)
 		shaker.shake(GameConfig.shake_hit_intensity * 1.6, 0.2)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.4)
 		flash_overlay.flash(0.28, 0.12, false)
+		_add_ultimate_charge(GameConfig.ultimate_charge_per_tier_up)
 	else:
 		shaker.shake(GameConfig.shake_hit_intensity, GameConfig.shake_hit_duration)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration)
@@ -942,6 +950,7 @@ func _on_giant_chip(g: Node3D) -> void:
 	_spawn_explosion(g.position, SmokeBurstScript.Kind.GIANT_CHIP, 1.0)
 	shaker.shake(GameConfig.shake_hit_intensity * 0.8, 0.1)
 	flash_overlay.flash(0.12, 0.06)
+	_add_ultimate_charge(GameConfig.ultimate_charge_per_giant_chip * 0.5)
 
 
 func _on_giant_hit(g: Node3D, killed: bool) -> void:
@@ -950,11 +959,13 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 		shaker.shake(GameConfig.shake_hit_intensity * 1.8, GameConfig.shake_hit_duration * 1.3)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
 		flash_overlay.flash(0.22, 0.10)
+		_add_ultimate_charge(GameConfig.ultimate_charge_per_giant_chip)
 		return
 
 	# Giant defeated: bump the run-stats counter for the recap screen.
 	_giants_killed_run += 1
 	_show_moment("Giant Down!", Color(1.0, 0.45, 0.25), 92)
+	_add_ultimate_charge(GameConfig.ultimate_charge_per_giant_kill)
 	# Finish: full showpiece combo — a cluster of big plumes across the giant so
 	# it reads as a screen-erasing detonation.
 	time_scaler.request_slowmo(GameConfig.slowmo_giant_scale, GameConfig.slowmo_giant_duration)
@@ -1148,6 +1159,23 @@ func _update_hud() -> void:
 				  _tier_color(GameConfig.combo_tier).g,
 				  _tier_color(GameConfig.combo_tier).b, 0.85))
 
+	# Ultimate gauge fill + ready state.
+	if _hud_ult_bar != null and _hud_ult_bg != null:
+		var fill: float = clampf(GameConfig.ultimate_gauge / GameConfig.ultimate_gauge_max, 0.0, 1.0)
+		_hud_ult_bar.size = Vector2(_hud_ult_bg.size.x * fill, 34.0)
+		var ready: bool = fill >= 1.0
+		if ready:
+			var pulse: float = 0.6 + 0.4 * absf(sin(Time.get_ticks_msec() * 0.005))
+			_hud_ult_bar.color = Color(1.0, 0.88, 0.28, pulse)
+			if _hud_ult_label != null:
+				_hud_ult_label.text = "ULT READY!  (right-click / SPACE)"
+				_hud_ult_label.add_theme_color_override("font_color", Color(1, 1, 1, pulse))
+		else:
+			_hud_ult_bar.color = Color(1.0, 0.62, 0.18, 0.85)
+			if _hud_ult_label != null:
+				_hud_ult_label.text = "ULT  %d%%" % int(fill * 100)
+				_hud_ult_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+
 
 func _on_game_over() -> void:
 	var traveled: int = int(GameConfig.distance)
@@ -1197,6 +1225,8 @@ func _build_title_overlay() -> void:
 	vbox.add_child(guide)
 	var guide2 := _make_centered_label("Reach TIER 2 to beat the Giant", 16, Color(1, 1, 1, 0.6))
 	vbox.add_child(guide2)
+	var guide3 := _make_centered_label("Fill the ULT bar  →  right-click / SPACE to unleash", 16, Color(1, 1, 1, 0.55))
+	vbox.add_child(guide3)
 
 	var spacer2 := Control.new()
 	spacer2.custom_minimum_size = Vector2(0, 28)
@@ -1271,6 +1301,7 @@ func _start_game() -> void:
 	_gameover_layer.visible = false
 	_set_play_hud_visible(true)
 	_seen_first_hit = false
+	_seen_ult_ready = false
 
 
 func _show_gameover_screen(is_new_best: bool) -> void:
@@ -1291,6 +1322,9 @@ func _set_play_hud_visible(v: bool) -> void:
 	if _hud_best != null: _hud_best.visible = v
 	if _hud_combo != null: _hud_combo.visible = v
 	if _hud_tier != null: _hud_tier.visible = v
+	if _hud_ult_bg != null: _hud_ult_bg.visible = v
+	if _hud_ult_bar != null: _hud_ult_bar.visible = v
+	if _hud_ult_label != null: _hud_ult_label.visible = v
 	for r in _hud_heart_rects:
 		r.visible = v
 
@@ -1337,6 +1371,37 @@ func _build_play_hud() -> void:
 	_hud_best = _anchored_label("Best 0", 14, Color(1, 1, 1, 0.55),
 		0.0, 0.0, 18.0, 52.0, 200.0, 72.0, HORIZONTAL_ALIGNMENT_LEFT)
 	hud.add_child(_hud_best)
+
+	# Bottom-centre: ULTIMATE gauge — a slim warm bar that fills with action,
+	# pulses when ready, and tells the player "right-click / SPACE to unleash".
+	_hud_ult_bg = ColorRect.new()
+	_hud_ult_bg.color = Color(0.12, 0.12, 0.16, 0.65)
+	_hud_ult_bg.anchor_left = 0.5; _hud_ult_bg.anchor_right = 0.5
+	_hud_ult_bg.anchor_top = 1.0; _hud_ult_bg.anchor_bottom = 1.0
+	_hud_ult_bg.offset_left = -180.0; _hud_ult_bg.offset_right = 180.0
+	_hud_ult_bg.offset_top = -72.0; _hud_ult_bg.offset_bottom = -38.0
+	_hud_ult_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_hud_ult_bg)
+
+	_hud_ult_bar = ColorRect.new()
+	_hud_ult_bar.color = Color(1.0, 0.66, 0.18, 0.92)
+	_hud_ult_bar.position = Vector2(0, 0)
+	_hud_ult_bar.size = Vector2(0, 34)
+	_hud_ult_bar.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_ult_bg.add_child(_hud_ult_bar)
+
+	_hud_ult_label = Label.new()
+	_hud_ult_label.text = "ULT  0%"
+	_hud_ult_label.add_theme_font_size_override("font_size", 16)
+	_hud_ult_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+	_hud_ult_label.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.8))
+	_hud_ult_label.add_theme_constant_override("outline_size", 2)
+	_hud_ult_label.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	_hud_ult_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_hud_ult_label.anchor_right = 1.0
+	_hud_ult_label.anchor_bottom = 1.0
+	_hud_ult_label.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_ult_bg.add_child(_hud_ult_label)
 
 
 ## Build a Label with explicit anchor + offset rectangle. The anchor pins it
@@ -1475,6 +1540,70 @@ func _animate_heart_lost(slot: int) -> void:
 	tw.parallel().tween_property(r, "color", Color(0.3, 0.3, 0.3, 0.5), 0.18)
 
 
+## Fills the ultimate gauge by `amount`, capping at the max. The first time the
+## gauge reaches FULL in a run, a one-shot "ULT READY!" moment teaches the
+## control (right-click / SPACE).
+func _add_ultimate_charge(amount: float) -> void:
+	var was_ready: bool = GameConfig.ultimate_gauge >= GameConfig.ultimate_gauge_max
+	GameConfig.ultimate_gauge = minf(GameConfig.ultimate_gauge_max,
+		GameConfig.ultimate_gauge + amount)
+	if not was_ready and GameConfig.ultimate_gauge >= GameConfig.ultimate_gauge_max:
+		if not _seen_ult_ready:
+			_seen_ult_ready = true
+			_show_moment("ULT READY!", Color(1.0, 0.88, 0.28), 64, "right-click / SPACE")
+
+
+## Spend the full ultimate gauge to fire a screen-clearing fan of T3 missiles.
+## Each missile is at maximum tier / pierce, skips the drop phase (fires
+## immediately forward), and is assigned a unique target from the visible
+## hittable pool so the salvo SPREADS across the field instead of bunching.
+func _fire_ultimate() -> void:
+	if GameConfig.ultimate_gauge < GameConfig.ultimate_gauge_max:
+		return
+	GameConfig.ultimate_gauge = 0.0
+
+	_show_moment("ULTIMATE!", Color(1.0, 0.85, 0.3), 110)
+	flash_overlay.flash(0.6, 0.45, false)
+	shaker.shake(GameConfig.shake_giant_intensity * 1.4, 0.55)
+	time_scaler.request_slowmo(0.4, 0.55)
+
+	# Build a target pool: hittable pillar cores + vulnerable giant.
+	var targets: Array = []
+	for pl in _pillars:
+		if not is_instance_valid(pl):
+			continue
+		if not pl.is_core_hittable():
+			continue
+		targets.append(pl.core_node())
+	for gt in _targets:
+		if gt.is_giant and gt.position.x <= GIANT_VULNERABLE_X \
+		and gt.position.x > airplane.position.x:
+			targets.append(gt)
+	targets.shuffle()
+
+	# Fire a fan of 12 high-power missiles in a forward arc.
+	var count: int = 12
+	for i in count:
+		var m: Node3D = MissleScene.instantiate()
+		add_child(m)
+		_missles.append(m)
+		var lane_off: float = float((i % 3) - 1) * 6.0
+		m.position = airplane.position + Vector3(10.0, -4.0 + lane_off, 0.0)
+		m.missile_scale = GameConfig.missile_tier_scales[3]
+		m.tier = 3
+		m.pierce = 3
+		# Skip the drop phase — ULT missiles boost out immediately.
+		m._boost_started = true
+		m.time_alive = GameConfig.missile_drop_duration + 0.001
+		var angle_deg: float = (float(i) - float(count - 1) * 0.5) * 8.0   # ±44°
+		var rad: float = deg_to_rad(angle_deg)
+		m.velocity = Vector3(cos(rad), 0.0, sin(rad)) * 600.0
+		if targets.size() > 0:
+			m.target = targets[i % targets.size()]
+		else:
+			m.target = null
+
+
 ## Color tied to combo tier — white -> warm yellow -> orange -> hot red.
 func _tier_color(tier: int) -> Color:
 	match tier:
@@ -1487,10 +1616,6 @@ func _tier_color(tier: int) -> Color:
 # ----- Input -----------------------------------------------------------------
 
 func _unhandled_input(event: InputEvent) -> void:
-	var left_click: bool = (event is InputEventMouseButton and event.pressed
-		and event.button_index == MOUSE_BUTTON_LEFT)
-	var primary: bool = left_click or event.is_action_pressed("fire_missle")
-
 	if event.is_action_pressed("reset_game"):
 		get_tree().reload_current_scene()
 		return
@@ -1498,6 +1623,21 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().quit()
 		return
 
+	var left_click: bool = (event is InputEventMouseButton and event.pressed
+		and event.button_index == MOUSE_BUTTON_LEFT)
+	var right_click: bool = (event is InputEventMouseButton and event.pressed
+		and event.button_index == MOUSE_BUTTON_RIGHT)
+	var space_press: bool = (event is InputEventKey and event.pressed
+		and not event.echo and event.keycode == KEY_SPACE)
+
+	# ULTIMATE — right-click or SPACE when the gauge is full. Checked FIRST so
+	# the ult fires instead of the regular missile salvo if both apply.
+	if (right_click or space_press) and GameConfig.status == GameConfig.STATUS_PLAYING:
+		if GameConfig.ultimate_gauge >= GameConfig.ultimate_gauge_max:
+			_fire_ultimate()
+			return
+
+	var primary: bool = left_click or event.is_action_pressed("fire_missle")
 	if not primary:
 		return
 
