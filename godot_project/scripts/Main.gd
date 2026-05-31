@@ -66,6 +66,18 @@ var _cam_lift: float = 0.0
 ## "stage advance" beats (e.g. the first ceiling pillar moment).
 var _current_stage: int = 1
 
+## Rhythmic pillar placement — gap positions follow a smooth sine-like sequence
+## that the player can groove into instead of zig-zagging frantically. Wave
+## and spike counters advance independently. Both reset on _start_game.
+var _wave_beat: int = 0
+var _spike_beat: int = 0
+const GAP_SEQUENCE: Array[float] = [-150.0, -50.0, 50.0, 150.0, 50.0, -50.0]
+const SPIKE_SEQUENCE: Array[float] = [0.0, 90.0, 180.0, 90.0, 0.0, -90.0, -180.0, -90.0]
+## Maximum z shift the plane can reasonably traverse between waves at current
+## scroll speed. Gap positions are clamped within this window from the plane's
+## current z so a target is always *reachable*.
+const MAX_GAP_REACH: float = 180.0
+
 # --- Per-run stats (shown on the game-over screen) ----------------------------
 var _max_combo_run: int = 0
 var _max_tier_run: int = 0
@@ -430,28 +442,30 @@ func _on_stage_advance(_old: int, new_stage: int) -> void:
 		_spawn_pillar(PillarScript.Kind.COLOSSUS, false, SPAWN_X - 400.0, z, true)
 
 
-## A row of NORMAL pillars across z. STRATEGIC layout:
-##   1) Gap goes FAR from the plane's current z → forces lateral movement
-##      (otherwise the plane could fly through every wave without steering).
-##   2) Breakables CLUSTER in adjacent lanes → clean combo strings + bigger
-##      OVERCHARGE chain potential.
-##   3) Plus the existing LOS / reachability safety net.
+## RHYTHMIC normal cluster — the gap z follows a smooth sine-like sequence
+## (`GAP_SEQUENCE`) instead of jumping to whichever lane is farthest from the
+## plane. The plane learns the rhythm and weaves with it. Gap stays within
+## reach of the plane's current z so the path is never impossible. Breakables
+## still CLUSTER in consecutive lanes for combo flow.
 func _spawn_normal_cluster(count: int, allow_ceiling: bool = true) -> void:
 	var lanes: Array[float] = [-200.0, -120.0, -45.0, 45.0, 120.0, 200.0]
 	var plane_z: float = airplane.position.z
 
-	# Pick the open lane FARTHEST from the plane (force the player to move). A
-	# 35% chance to shift by one slot adds variety so it's not always trivially
-	# predictable.
+	# Beat-driven gap z. Clamp within reach of the plane so it's always
+	# physically dodgeable in the time available.
+	var beat_z: float = GAP_SEQUENCE[_wave_beat % GAP_SEQUENCE.size()]
+	_wave_beat += 1
+	if absf(beat_z - plane_z) > MAX_GAP_REACH:
+		beat_z = plane_z + MAX_GAP_REACH * signf(beat_z - plane_z)
+
+	# Pick the lane nearest the beat_z as the open gap.
 	var gap_idx: int = 0
-	var best_dist: float = -1.0
+	var best_d: float = INF
 	for i in lanes.size():
-		var dz: float = absf(lanes[i] - plane_z)
-		if dz > best_dist:
-			best_dist = dz
+		var d: float = absf(lanes[i] - beat_z)
+		if d < best_d:
+			best_d = d
 			gap_idx = i
-	if randf() < 0.35:
-		gap_idx = clampi(gap_idx + (1 if randf() < 0.5 else -1), 0, lanes.size() - 1)
 
 	# Collect remaining lanes in z order (left → right).
 	var available: Array = []
@@ -459,49 +473,39 @@ func _spawn_normal_cluster(count: int, allow_ceiling: bool = true) -> void:
 		if i != gap_idx:
 			available.append(lanes[i])
 
-	# Cluster N breakables in CONSECUTIVE lanes so a single sweep destroys them
-	# all in a row → maximum combo flow + explosion chain feel.
+	# Cluster breakables in consecutive lanes so a single sweep chains combos.
 	var n_breakable: int = mini(int(round(float(count) * 0.55)), available.size() - 1)
 	n_breakable = maxi(n_breakable, 1)
 	var cluster_start: int = int(randf() * maxi(1, available.size() - n_breakable + 1))
 
-	var x_ref: float = SPAWN_X + 120.0
 	for i in mini(count, available.size()):
 		var z: float = available[i]
 		var x: float = SPAWN_X + randf() * 240.0
 		var want_breakable: bool = (i >= cluster_start) and (i < cluster_start + n_breakable)
-		# LOS safety: if a breakable here would be masked by an existing
-		# unbreakable in front, demote to keep the cluster honest.
-		if want_breakable and _has_blocker_for_breakable_at(x_ref, z):
+		# LOS safety using actual depth (catches fat-pillar shadows).
+		if want_breakable and _has_blocker_for_breakable_at(x, z, 100.0):
 			want_breakable = false
 		var from_ceiling: bool = allow_ceiling and randf() < 0.35
 		_spawn_pillar(PillarScript.Kind.NORMAL, want_breakable, x, z, from_ceiling)
 
 
-## Strategic spike line: alternates spikes on OPPOSITE sides of the plane's
-## current z lane → forces left/right weave. Same LOS safety as cluster.
+## RHYTHMIC spike line — z follows SPIKE_SEQUENCE (sine wave traversing the
+## corridor). Plane weaves with it. Each spike clamped within plane reach so
+## the cascade is always passable.
 func _spawn_spike_line(count: int, allow_ceiling: bool = true) -> void:
 	var plane_z: float = airplane.position.z
 	for i in count:
-		# Alternate left/right of plane each iteration. First spike on the side
-		# the plane is NOT currently on, so the player must immediately move.
-		var side: float = -1.0 if (i % 2 == 0) == (plane_z >= 0.0) else 1.0
-		var z: float = side * (60.0 + randf() * 130.0)   # 60..190 from centre
-		z = clampf(z, -190.0, 190.0)
+		var beat_z: float = SPIKE_SEQUENCE[(_spike_beat + i) % SPIKE_SEQUENCE.size()]
+		if absf(beat_z - plane_z) > MAX_GAP_REACH:
+			beat_z = plane_z + MAX_GAP_REACH * signf(beat_z - plane_z)
+		var z: float = clampf(beat_z, -190.0, 190.0)
 		var x: float = SPAWN_X + i * 220.0
 		var want_breakable: bool = randf() < 0.7
-		if want_breakable and _has_blocker_for_breakable_at(x, z):
-			var found := false
-			for attempt in 4:
-				var alt_z: float = -side * (60.0 + randf() * 130.0)
-				if not _has_blocker_for_breakable_at(x, alt_z):
-					z = alt_z
-					found = true
-					break
-			if not found:
-				want_breakable = false
+		if want_breakable and _has_blocker_for_breakable_at(x, z, 50.0):
+			want_breakable = false
 		var from_ceiling: bool = allow_ceiling and randf() < 0.35
 		_spawn_pillar(PillarScript.Kind.SPIKE, want_breakable, x, z, from_ceiling)
+	_spike_beat += count
 
 
 ## Colossi: an UNBREAKABLE one looms from a SIDE lane (frames the corridor,
@@ -531,19 +535,18 @@ func _spawn_pillar(kind: int, breakable: bool, x: float, z: float, from_ceiling:
 
 
 ## Would a BREAKABLE spawned at (target_x, target_z) be masked by an existing
-## UNBREAKABLE pillar in the same z lane closer to the plane? If so, the player
-## sees a target they can never line up on (the unbreakable scrolls past first
-## but blocks shots in the meantime). We use this at spawn-time to relocate or
-## demote.
-func _has_blocker_for_breakable_at(target_x: float, target_z: float) -> bool:
-	const Z_LANE_TOLERANCE := 90.0
-	const X_LOOK_AHEAD := 1800.0
+## UNBREAKABLE pillar in the same z lane closer to the plane? Uses each
+## pillar's ACTUAL d (depth) instead of a fixed lane tolerance, so a fat
+## colossus correctly shadows breakables in adjacent lanes that would
+## otherwise read as "different lane".
+func _has_blocker_for_breakable_at(target_x: float, target_z: float, target_d: float = 80.0) -> bool:
+	const X_LOOK_AHEAD := 2200.0
 	for pl in _pillars:
 		if not is_instance_valid(pl):
 			continue
 		if pl.breakable:
 			continue
-		if absf(pl.global_position.z - target_z) > Z_LANE_TOLERANCE:
+		if absf(pl.global_position.z - target_z) > pl.d * 0.5 + target_d * 0.5 + 10.0:
 			continue
 		if pl.global_position.x >= target_x:
 			continue
@@ -1400,6 +1403,8 @@ func _start_game() -> void:
 	_set_play_hud_visible(true)
 	_seen_first_hit = false
 	_seen_ult_ready = false
+	_wave_beat = 0
+	_spike_beat = 0
 
 
 func _show_gameover_screen(is_new_best: bool) -> void:
