@@ -1584,12 +1584,6 @@ func _fire_ultimate() -> void:
 	var pulse_pos: Vector3 = airplane.global_position + Vector3(30.0, 15.0, 0.0)
 	print("[ULT] fired at ", pulse_pos, " (plane=", airplane.global_position, ")")
 	_spawn_ult_pulse(pulse_pos)
-	_spawn_ult_beam(pulse_pos)
-	# Multiple plumes at staggered offsets so at least one cluster is
-	# unmistakably visible regardless of camera angle / occlusion.
-	_spawn_explosion(pulse_pos, SmokeBurstScript.Kind.GIANT_FINISH, 4.0)
-	_spawn_explosion(pulse_pos + Vector3(0.0, 60.0, 0.0), SmokeBurstScript.Kind.GIANT_FINISH, 3.0)
-	_spawn_explosion(pulse_pos + Vector3(-30.0, 0.0, 0.0), SmokeBurstScript.Kind.PILLAR_BREAK, 3.5)
 
 	flash_overlay.flash(0.7, 0.5, false)
 	shaker.shake(GameConfig.shake_giant_intensity * 1.5, 0.65)
@@ -1708,7 +1702,9 @@ func _ult_blast(pl: Node3D) -> void:
 		return
 	if not pl.is_solid_hazard():
 		return
-	_spawn_explosion(pl.global_position, SmokeBurstScript.Kind.PILLAR_BREAK, 4.0)
+	# Smaller per-pillar plume (power 1.8) so the cascade doesn't drown the
+	# screen in overlapping smoke — each detonation stays individually visible.
+	_spawn_explosion(pl.global_position, SmokeBurstScript.Kind.PILLAR_BREAK, 1.8)
 	pl.shatter()
 
 
