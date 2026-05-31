@@ -1570,13 +1570,9 @@ func _fire_ultimate() -> void:
 	# with the plane at the centre, plus a big bright explosion at the plane's
 	# muzzle. Spawned BEFORE the slowmo request so the first frame draws at
 	# real time (no creeping smear). This is the "BOOM, here it goes" pulse.
-	var pulse_pos: Vector3 = airplane.position + Vector3(30.0, 15.0, 0.0)
-	# real_time=true so the rings grow on wall-clock seconds (slowmo doesn't
-	# crush them to a creep). Thick tube + no-depth-test mat = unmistakable.
-	var ring_scales: Array = [50.0, 95.0, 150.0, 215.0, 290.0]
-	var ring_durations: Array = [0.45, 0.55, 0.65, 0.80, 0.95]
-	for i in ring_scales.size():
-		_spawn_shockwave(pulse_pos, ring_scales[i], ring_durations[i], true, 4.0)
+	var pulse_pos: Vector3 = airplane.global_position + Vector3(30.0, 15.0, 0.0)
+	print("[ULT] fired at ", pulse_pos, " (plane=", airplane.global_position, ")")
+	_spawn_ult_pulse(pulse_pos)
 	_spawn_explosion(pulse_pos, SmokeBurstScript.Kind.GIANT_FINISH, 3.0)
 
 	flash_overlay.flash(0.7, 0.5, false)
@@ -1612,6 +1608,44 @@ func _fire_ultimate() -> void:
 	else:
 		subtitle = "FIELD CLEAR"
 	_show_moment("ULTIMATE!", Color(1.0, 0.85, 0.3), 110, subtitle)
+
+
+## A bright "energy release" at the plane on ULT — three nested glowing spheres
+## that expand outward via Tween (Tween uses Engine time, ignoring our custom
+## time_scale, so the pulse stays punchy through the slowmo). Unshaded
+## emissive material + no_depth_test means it's GUARANTEED to render on top of
+## every scene mesh.
+func _spawn_ult_pulse(pos: Vector3) -> void:
+	for layer in 3:
+		var mesh := SphereMesh.new()
+		mesh.radius = 1.0
+		mesh.height = 2.0
+		mesh.radial_segments = 16
+		mesh.rings = 10
+		var mat := StandardMaterial3D.new()
+		mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+		mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+		mat.no_depth_test = true
+		mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+		mat.emission_enabled = true
+		mat.emission = Color(1.0, 0.78, 0.28)
+		mat.emission_energy_multiplier = 4.0
+		mat.albedo_color = Color(1.0, 0.85, 0.35, 0.55 - layer * 0.05)
+		var mi := MeshInstance3D.new()
+		mi.mesh = mesh
+		mi.set_surface_override_material(0, mat)
+		add_child(mi)
+		mi.global_position = pos
+		var start_s: float = 6.0 + float(layer) * 4.0
+		var end_s: float = 80.0 + float(layer) * 60.0
+		var dur: float = 0.55 + float(layer) * 0.18
+		mi.scale = Vector3.ONE * start_s
+		var tw := create_tween()
+		tw.tween_property(mi, "scale", Vector3.ONE * end_s, dur) \
+			.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+		tw.parallel().tween_property(mat, "albedo_color:a", 0.0, dur)
+		tw.parallel().tween_property(mat, "emission_energy_multiplier", 0.0, dur)
+		tw.tween_callback(mi.queue_free)
 
 
 ## Single pillar's ULT chain detonation — scheduled by staggered timers. Safe
