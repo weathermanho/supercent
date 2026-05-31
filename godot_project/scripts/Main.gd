@@ -1584,7 +1584,12 @@ func _fire_ultimate() -> void:
 	var pulse_pos: Vector3 = airplane.global_position + Vector3(30.0, 15.0, 0.0)
 	print("[ULT] fired at ", pulse_pos, " (plane=", airplane.global_position, ")")
 	_spawn_ult_pulse(pulse_pos)
-	_spawn_explosion(pulse_pos, SmokeBurstScript.Kind.GIANT_FINISH, 3.0)
+	_spawn_ult_beam(pulse_pos)
+	# Multiple plumes at staggered offsets so at least one cluster is
+	# unmistakably visible regardless of camera angle / occlusion.
+	_spawn_explosion(pulse_pos, SmokeBurstScript.Kind.GIANT_FINISH, 4.0)
+	_spawn_explosion(pulse_pos + Vector3(0.0, 60.0, 0.0), SmokeBurstScript.Kind.GIANT_FINISH, 3.0)
+	_spawn_explosion(pulse_pos + Vector3(-30.0, 0.0, 0.0), SmokeBurstScript.Kind.PILLAR_BREAK, 3.5)
 
 	flash_overlay.flash(0.7, 0.5, false)
 	shaker.shake(GameConfig.shake_giant_intensity * 1.5, 0.65)
@@ -1619,6 +1624,41 @@ func _fire_ultimate() -> void:
 	else:
 		subtitle = "FIELD CLEAR"
 	_show_moment("ULTIMATE!", Color(1.0, 0.85, 0.3), 110, subtitle)
+
+
+## Tall vertical beam of light shooting up from the plane on ULT. Box scaled
+## tall over a short Tween, unshaded emissive + no_depth_test so it ALWAYS
+## renders on top. Anchored at the bottom and growing upward (offsetting Y as
+## scale.y grows) so the beam appears to launch from the plane to the sky.
+func _spawn_ult_beam(pos: Vector3) -> void:
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3.ONE
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.no_depth_test = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.85, 0.35)
+	mat.emission_energy_multiplier = 8.0
+	mat.albedo_color = Color(1.0, 0.92, 0.55, 0.85)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.set_surface_override_material(0, mat)
+	add_child(mi)
+	mi.global_position = pos
+	var start_w: float = 36.0
+	var end_w: float = 60.0
+	var beam_height: float = 700.0
+	mi.scale = Vector3(start_w, 8.0, start_w)
+	# Anchor bottom: as scale.y grows, lift position.y by half the growth.
+	var tw := create_tween()
+	tw.tween_property(mi, "scale", Vector3(end_w, beam_height, end_w), 0.5) \
+		.set_trans(Tween.TRANS_CUBIC).set_ease(Tween.EASE_OUT)
+	tw.parallel().tween_property(mi, "position:y", pos.y + beam_height * 0.5, 0.5)
+	tw.parallel().tween_property(mat, "albedo_color:a", 0.0, 0.5)
+	tw.parallel().tween_property(mat, "emission_energy_multiplier", 0.0, 0.5)
+	tw.tween_callback(mi.queue_free)
 
 
 ## A bright "energy release" at the plane on ULT — three nested glowing spheres
