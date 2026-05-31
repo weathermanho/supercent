@@ -44,6 +44,9 @@ var _t: float = 0.0
 var _y_hidden: float
 var _y_risen: float
 var core_alive: bool = false
+## HP for breakable cores. Big targets (colossi) take multiple hits — the
+## "target size reflects hit count" rule. Normal / spike / fake all = 1.
+var core_hp: int = 1
 
 var _body: MeshInstance3D
 var _core: MeshInstance3D
@@ -107,6 +110,13 @@ func configure(kind_: int, breakable_: bool, from_ceiling_: bool = false) -> voi
 		# Risen = standing on the floor, bottom at GROUND_Y, top at GROUND_Y + h.
 		_y_risen = GROUND_Y + h * 0.5
 		_y_hidden = GROUND_Y - h * 0.5 - 40.0
+
+	# Bigger targets take more hits. Only the breakable variants matter here;
+	# unbreakable colossi never enter the take_core_damage path.
+	if breakable and kind == Kind.COLOSSUS:
+		core_hp = 3
+	else:
+		core_hp = 1
 
 
 func _ready() -> void:
@@ -244,6 +254,27 @@ func core_world_pos() -> Vector3:
 ## Core is shootable once the pillar is fully out (and breakable, of course).
 func is_core_hittable() -> bool:
 	return breakable and core_alive and _phase == Phase.RISEN
+
+
+## Apply one core hit. Returns true if THIS hit was the killing blow (the
+## caller plays the full death juice + combo bookkeeping in that case). When
+## false, the pillar absorbs a chip — body tints darker so the player sees
+## visible progress on big targets that take multiple shots.
+func take_core_damage() -> bool:
+	core_hp -= 1
+	if core_hp <= 0:
+		shatter()
+		return true
+	# Chip — visually drop the body toward red-tinted concrete + briefly punch
+	# the body scale so a hit is FELT even though the pillar is still standing.
+	if _body != null:
+		var tint_step: float = 0.18
+		_body.modulate = _body.modulate.lerp(Color(1.2, 0.7, 0.6, 1.0), tint_step)
+		_body.scale = Vector3(1.07, 1.07, 1.07)
+		var tw := create_tween()
+		tw.tween_property(_body, "scale", Vector3.ONE, 0.16) \
+			.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+	return false
 
 
 ## Called when a missile destroys the core. Triggers collapse; pillar enters

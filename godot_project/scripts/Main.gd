@@ -724,21 +724,26 @@ func _fly_missles(dt_ms: float) -> void:
 			to_remove.append(i)
 			continue
 
-		# Pillar hit. A BREAKABLE pillar shatters on ANY body hit (the glowing
-		# core is the aim point, not a pixel-perfect weak spot — far better feel
-		# with manual aim); an UNBREAKABLE pillar just sparks and stops the shot.
+		# Pillar hit. A BREAKABLE pillar's core takes damage (multi-hit for big
+		# targets); the missile pierces ON A KILL only. An UNBREAKABLE pillar
+		# sparks and stops the shot. A missile never re-hits the same pillar
+		# (pillars_hit set), so a pierce shot doesn't drain HP every frame while
+		# sitting in the AABB.
 		var broke := false
+		var killed := false
 		var blocked := false
 		for pl in _pillars:
 			if not pl.is_solid_hazard():
 				continue
-			# AABB overlap with a small margin (front face emphasised in -X).
 			if m.position.x > pl.global_position.x - pl.w * 0.5 - HIT_RADIUS \
 			and m.position.x < pl.global_position.x + pl.w * 0.5 + HIT_RADIUS \
 			and absf(m.position.y - pl.global_position.y) < pl.h * 0.5 + HIT_RADIUS \
 			and absf(m.position.z - pl.global_position.z) < pl.d * 0.5 + HIT_RADIUS:
 				if pl.breakable and pl.core_alive:
-					_on_core_hit(pl, m)
+					if pl in m.pillars_hit:
+						continue
+					m.pillars_hit.append(pl)
+					killed = _on_core_hit(pl, m)
 					broke = true
 				else:
 					_spawn_explosion(m.position, SmokeBurstScript.Kind.BLOCK_SPARK, 1.0)
@@ -746,8 +751,9 @@ func _fly_missles(dt_ms: float) -> void:
 					blocked = true
 				break
 		if broke:
-			if m.pierce > 0:
-				m.pierce -= 1            # punch through, keep flying
+			# Pierce only on a kill — chip hits don't waste pierce charges.
+			if killed and m.pierce > 0:
+				m.pierce -= 1
 			else:
 				to_remove.append(i)
 			continue
@@ -760,19 +766,20 @@ func _fly_missles(dt_ms: float) -> void:
 	_cleanup(to_remove, _missles)
 
 
-func _on_core_hit(pl: Node3D, m: Node3D) -> void:
+## Returns true if this hit killed the pillar (multi-HP cores chip first, then
+## the killing shot fires the full kill juice + combo bookkeeping).
+func _on_core_hit(pl: Node3D, m: Node3D) -> bool:
+	var pos: Vector3 = pl.core_world_pos()
+	var killed: bool = pl.take_core_damage()
+
+	# Every hit (chip OR kill) counts toward combo so big targets feel rewarding
+	# all the way through, not only on the killing shot.
 	var prev_tier: int = GameConfig.combo_tier
-	pl.shatter()
 	GameConfig.register_core_hit()
 	if GameConfig.combo > _max_combo_run:
 		_max_combo_run = GameConfig.combo
 	if GameConfig.combo_tier > _max_tier_run:
 		_max_tier_run = GameConfig.combo_tier
-
-	# Moment text — First Hit happens at most once per run; Tier Up at each new
-	# threshold. They land OVER the action so the player FEELS the milestone.
-	# First Hit teaches the COMBO concept with a "+1 COMBO" subtitle (the player
-	# learns that hitting cores grows a counter).
 	if not _seen_first_hit:
 		_seen_first_hit = true
 		_show_moment("First Hit!", Color(1.0, 0.95, 0.55), 72, "+1 COMBO")
@@ -780,10 +787,19 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> void:
 		_show_combo_tick()
 	_bump_combo_widget()
 
-	var pos: Vector3 = pl.core_world_pos()
-	_spawn_explosion(pos, SmokeBurstScript.Kind.PILLAR_BREAK, float(m.tier + 1))
+	if not killed:
+		# Chip on a multi-HP target — visible bounce, no full explosion.
+		_spawn_explosion(pos, SmokeBurstScript.Kind.BLOCK_SPARK, 1.5)
+		shaker.shake(GameConfig.shake_hit_intensity * 0.7, 0.09)
+		time_scaler.request_hitstop(GameConfig.hitstop_duration * 0.7)
+		# Tier may still rise on a chip hit — still celebrate it.
+		if GameConfig.combo_tier > prev_tier:
+			_show_moment("Tier %d!" % GameConfig.combo_tier, _tier_color(GameConfig.combo_tier), 88)
+			flash_overlay.flash(0.22, 0.10, false)
+		return false
 
-	# Tier-up celebration.
+	# Kill — full juice.
+	_spawn_explosion(pos, SmokeBurstScript.Kind.PILLAR_BREAK, float(m.tier + 1))
 	if GameConfig.combo_tier > prev_tier:
 		_show_moment("Tier %d!" % GameConfig.combo_tier, _tier_color(GameConfig.combo_tier), 88)
 		shaker.shake(GameConfig.shake_hit_intensity * 1.6, 0.2)
@@ -792,6 +808,7 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> void:
 	else:
 		shaker.shake(GameConfig.shake_hit_intensity, GameConfig.shake_hit_duration)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration)
+	return true
 
 
 func _on_giant_chip(g: Node3D) -> void:

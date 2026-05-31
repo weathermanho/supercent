@@ -24,6 +24,11 @@ var prev_position: Vector3 = Vector3.ZERO
 var tier: int = 0
 var pierce: int = 0
 
+## Pillars this missile has already damaged this flight — so a pierce shot
+## doesn't repeatedly re-hit the same target every frame while sitting inside
+## its AABB.
+var pillars_hit: Array = []
+
 
 func _ready() -> void:
 	# Geometry: same boxy missile as before, but built so the nose is at
@@ -70,16 +75,28 @@ func step(dt_ms: float) -> void:
 		position += velocity * delta
 		_orient_to_dir(Vector3.RIGHT)
 	else:
-		# Phase 2 — booster: point STRAIGHT at the target (or straight forward
-		# with no lock) and fly in a straight line. We set the direction directly
-		# (not move_toward) so there's a clean drop -> straight-line corner
-		# instead of a smooth elliptical arc between the two phases.
-		var dir: Vector3 = Vector3.RIGHT
+		# Phase 2 — booster: SMOOTHLY turn toward the target instead of snapping.
+		# A limited turn rate produces a visible arc (the missile sweeps up out
+		# of the drop) and reads as a guided weapon, not a tracking laser. With
+		# no target the missile keeps its current heading (straight forward).
+		var dir_target: Vector3 = Vector3.RIGHT
 		if target != null and is_instance_valid(target):
-			dir = (target.global_position - global_position).normalized()
+			dir_target = (target.global_position - global_position).normalized()
+
+		var current_dir: Vector3
+		if velocity.length_squared() > 1.0:
+			current_dir = velocity.normalized()
+		else:
+			current_dir = Vector3.RIGHT
+
+		# Turn rate in radians/sec; clamped blend factor caps per-frame swing.
+		const TURN_RATE := 5.0
+		var blend: float = clampf(TURN_RATE * delta, 0.0, 1.0)
+		var new_dir: Vector3 = current_dir.lerp(dir_target, blend).normalized()
+
 		var spd: float = maxf(velocity.length(), 320.0)
 		spd = minf(spd + 3000.0 * delta, GameConfig.missile_max_speed)
-		velocity = dir * spd
+		velocity = new_dir * spd
 		position += velocity * delta
 		_orient_to_dir(velocity)
 
