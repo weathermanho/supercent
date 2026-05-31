@@ -138,12 +138,12 @@ func _process(_delta: float) -> void:
 func _ready() -> void:
 	position.y = _y_hidden
 
-	# Opaque concrete body — needed so individual pillars READ as separate
-	# objects (semi-transparent versions blurred together visually). The 12
-	# edge boxes are drawn SEPARATELY with no_depth_test so the threat colour
-	# is always visible on top of the body.
+	# Mostly-opaque concrete body (alpha 0.85) — pillars still read as solid
+	# distinct objects, but a faint X-ray hint lets stacked silhouettes peek
+	# through. Edges are drawn separately with no_depth_test for the
+	# wireframe threat overlay.
 	var body_color: Color = Color8(134, 126, 118) if breakable else Color8(94, 97, 104)
-	_body = BoxFactory.make_box(w, h, d, body_color)
+	_body = BoxFactory.make_transparent_box(w, h, d, body_color, 0.85)
 	_body.visible = false
 	add_child(_body)
 
@@ -261,7 +261,7 @@ func is_solid_hazard() -> bool:
 ## Build 12 thin BoxMesh children that trace the AABB edges of the pillar.
 ## All share `_edge_mat` so tinting them as a group is a one-line change.
 func _build_edges(w_: float, h_: float, d_: float) -> void:
-	const T: float = 3.0   # edge thickness
+	const T: float = 1.5   # edge thickness (thinner — was 3.0)
 	var hw: float = w_ * 0.5
 	var hh: float = h_ * 0.5
 	var hd: float = d_ * 0.5
