@@ -64,6 +64,11 @@ var _pending_erupt: bool = false
 var _edges: Array = []
 var _edge_mat: StandardMaterial3D
 var _is_threat: bool = false
+## True at any point during the pillar's flight it was flagged as a threat.
+## Used by Main to award a near-miss bonus when the pillar passes the plane
+## without colliding (i.e. the player successfully dodged the danger).
+var was_threat_ever: bool = false
+var near_miss_awarded: bool = false
 
 # Cached for Main's collision query: current world-y of the emerged top and
 # bottom (handles both ground-up and ceiling-down orientations).
@@ -143,7 +148,7 @@ func _ready() -> void:
 	# through. Edges are drawn separately with no_depth_test for the
 	# wireframe threat overlay.
 	var body_color: Color = Color8(134, 126, 118) if breakable else Color8(94, 97, 104)
-	_body = BoxFactory.make_transparent_box(w, h, d, body_color, 0.95)
+	_body = BoxFactory.make_transparent_box(w, h, d, body_color, 1.0)
 	_body.visible = false
 	add_child(_body)
 
@@ -302,6 +307,7 @@ func set_threat(threat: bool) -> void:
 		return    # no-op, avoid re-walking _edges every frame
 	_is_threat = threat
 	if threat:
+		was_threat_ever = true
 		_edge_mat.emission_enabled = true
 		_edge_mat.emission = Color(1.0, 0.25, 0.20)
 		_edge_mat.albedo_color = Color(1.0, 0.55, 0.45)

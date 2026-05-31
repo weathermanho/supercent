@@ -388,14 +388,40 @@ func _stage_for_distance(d: float) -> int:
 	return i + 1
 
 
-## Fired once when the run crosses into a new stage. Stage 4 entry gets a
-## deliberate beat (camera kick + an immediate hanging colossus on a safe side
-## lane) so the FIRST ceiling pillar is an intentional moment, not just one
-## more piece of noise — preserving the "head-duck" reflex impact.
+## Fired once when the run crosses into a new stage. Every stage entry shows
+## a big "STAGE N: NAME" beat so the run feels like it's progressing through
+## acts, not just an endless treadmill. Stage 4 gets the extra ceiling-pillar
+## moment + camera kick on top.
 func _on_stage_advance(_old: int, new_stage: int) -> void:
+	var stage_names: Array = [
+		"",                  # stage 1 is the opening — no banner
+		"STAGE 2: DISCERN",
+		"STAGE 3: REFLEX",
+		"STAGE 4: SKY",
+		"STAGE 5: CHAOS",
+	]
+	var stage_subs: Array = [
+		"",
+		"red core only — ignore the rest",
+		"spikes incoming · stay sharp",
+		"watch the ceiling",
+		"survive · everything mixed",
+	]
+	var stage_colors: Array = [
+		Color(1, 1, 1, 1),
+		Color(0.95, 0.95, 0.65),
+		Color(1.0, 0.78, 0.35),
+		Color(0.75, 0.85, 1.0),
+		Color(1.0, 0.45, 0.30),
+	]
+	var idx: int = clampi(new_stage - 1, 0, stage_names.size() - 1)
+	if stage_names[idx] != "":
+		_show_moment(stage_names[idx], stage_colors[idx], 80, stage_subs[idx])
+		shaker.shake(GameConfig.shake_hit_intensity * 0.8, 0.18)
+		flash_overlay.flash(0.16, 0.20, false)
+
 	if new_stage == 4:
 		shaker.shake(GameConfig.shake_hit_intensity * 1.4, 0.35)
-		flash_overlay.flash(0.18, 0.18, false)
 		# Force-spawn the first ceiling moment: a side-lane hanging colossus,
 		# guaranteed not in the dodge lane so it reads as "wow" not as
 		# "unfair death". Player learns ceiling exists, ducks instinctively.
@@ -404,61 +430,70 @@ func _on_stage_advance(_old: int, new_stage: int) -> void:
 		_spawn_pillar(PillarScript.Kind.COLOSSUS, false, SPAWN_X - 400.0, z, true)
 
 
-## A row of NORMAL pillars across z, deliberately leaving one open lane so the
-## formation is always passable. Lanes are trimmed to ±200 so they stay inside
-## the plane's reachable z. Breakables avoid lanes already blocked by an
-## existing unbreakable closer to the plane — they swap into a free lane or
-## demote to unbreakable so the player never sees a target they can't shoot.
+## A row of NORMAL pillars across z. STRATEGIC layout:
+##   1) Gap goes FAR from the plane's current z → forces lateral movement
+##      (otherwise the plane could fly through every wave without steering).
+##   2) Breakables CLUSTER in adjacent lanes → clean combo strings + bigger
+##      OVERCHARGE chain potential.
+##   3) Plus the existing LOS / reachability safety net.
 func _spawn_normal_cluster(count: int, allow_ceiling: bool = true) -> void:
 	var lanes: Array[float] = [-200.0, -120.0, -45.0, 45.0, 120.0, 200.0]
-	lanes.shuffle()
-	var open_lane: int = int(randf() * lanes.size())
-	var x_ref: float = SPAWN_X + 120.0
-	# Pre-classify the lanes we'll actually use into safe / blocked for a
-	# new BREAKABLE spawn (based on existing unbreakables in front).
-	var slots: Array = []
-	for i in mini(count, lanes.size()):
-		if i == open_lane:
-			continue
-		slots.append(lanes[i])
-	var safe_for_breakable: Array = []
-	var blocked: Array = []
-	for z in slots:
-		if _has_blocker_for_breakable_at(x_ref, z):
-			blocked.append(z)
-		else:
-			safe_for_breakable.append(z)
-	safe_for_breakable.shuffle()
+	var plane_z: float = airplane.position.z
 
-	for z in slots:
+	# Pick the open lane FARTHEST from the plane (force the player to move). A
+	# 35% chance to shift by one slot adds variety so it's not always trivially
+	# predictable.
+	var gap_idx: int = 0
+	var best_dist: float = -1.0
+	for i in lanes.size():
+		var dz: float = absf(lanes[i] - plane_z)
+		if dz > best_dist:
+			best_dist = dz
+			gap_idx = i
+	if randf() < 0.35:
+		gap_idx = clampi(gap_idx + (1 if randf() < 0.5 else -1), 0, lanes.size() - 1)
+
+	# Collect remaining lanes in z order (left → right).
+	var available: Array = []
+	for i in lanes.size():
+		if i != gap_idx:
+			available.append(lanes[i])
+
+	# Cluster N breakables in CONSECUTIVE lanes so a single sweep destroys them
+	# all in a row → maximum combo flow + explosion chain feel.
+	var n_breakable: int = mini(int(round(float(count) * 0.55)), available.size() - 1)
+	n_breakable = maxi(n_breakable, 1)
+	var cluster_start: int = int(randf() * maxi(1, available.size() - n_breakable + 1))
+
+	var x_ref: float = SPAWN_X + 120.0
+	for i in mini(count, available.size()):
+		var z: float = available[i]
 		var x: float = SPAWN_X + randf() * 240.0
-		var want_breakable: bool = randf() < 0.55
-		# If we want a breakable but this lane is blocked, try to swap with a
-		# still-free safe lane. If none left, demote to unbreakable.
-		if want_breakable and z in blocked:
-			if safe_for_breakable.size() > 0:
-				z = safe_for_breakable.pop_back()
-				blocked.append(z) # consumed
-			else:
-				want_breakable = false
-		elif (not want_breakable) and z in safe_for_breakable:
-			# Reserve safe lanes for breakables when possible.
-			safe_for_breakable.erase(z)
+		var want_breakable: bool = (i >= cluster_start) and (i < cluster_start + n_breakable)
+		# LOS safety: if a breakable here would be masked by an existing
+		# unbreakable in front, demote to keep the cluster honest.
+		if want_breakable and _has_blocker_for_breakable_at(x_ref, z):
+			want_breakable = false
 		var from_ceiling: bool = allow_ceiling and randf() < 0.35
 		_spawn_pillar(PillarScript.Kind.NORMAL, want_breakable, x, z, from_ceiling)
 
 
+## Strategic spike line: alternates spikes on OPPOSITE sides of the plane's
+## current z lane → forces left/right weave. Same LOS safety as cluster.
 func _spawn_spike_line(count: int, allow_ceiling: bool = true) -> void:
+	var plane_z: float = airplane.position.z
 	for i in count:
-		var z: float = -190.0 + randf() * 380.0    # ±190 → inside plane reach
+		# Alternate left/right of plane each iteration. First spike on the side
+		# the plane is NOT currently on, so the player must immediately move.
+		var side: float = -1.0 if (i % 2 == 0) == (plane_z >= 0.0) else 1.0
+		var z: float = side * (60.0 + randf() * 130.0)   # 60..190 from centre
+		z = clampf(z, -190.0, 190.0)
 		var x: float = SPAWN_X + i * 220.0
 		var want_breakable: bool = randf() < 0.7
-		# Breakable spike: retry a few random z's to find a non-blocked one.
-		# If we can't, demote to unbreakable so the player isn't teased.
 		if want_breakable and _has_blocker_for_breakable_at(x, z):
 			var found := false
-			for attempt in 6:
-				var alt_z: float = -190.0 + randf() * 380.0
+			for attempt in 4:
+				var alt_z: float = -side * (60.0 + randf() * 130.0)
 				if not _has_blocker_for_breakable_at(x, alt_z):
 					z = alt_z
 					found = true
@@ -584,9 +619,30 @@ func _move_pillars(dt_ms: float) -> void:
 			and airplane.position.y > pl.emerged_bottom_y - 26.0:
 				_on_crash(pl)
 
+		# Near-miss bonus — pillar that was a threat at some point during its
+		# flight has just passed the plane without colliding. Reward the skilled
+		# dodge with +1 combo bonus + "Close!" moment.
+		if alive and pl.was_threat_ever and not pl.near_miss_awarded \
+		and pl.global_position.x < airplane.position.x - pl.w * 0.5:
+			pl.near_miss_awarded = true
+			_on_near_miss(pl)
+
 		if not alive:
 			to_remove.append(i)
 	_cleanup(to_remove, _pillars)
+
+
+## Successful dodge of a previously-threatening pillar. Awards bonus combo +
+## a short "Close!" moment. Slight ult charge bump as well so a clean flying
+## run is meaningfully rewarded.
+func _on_near_miss(pl: Node3D) -> void:
+	GameConfig.register_core_hit()           # +1 combo (uses same machinery)
+	if GameConfig.combo > _max_combo_run:
+		_max_combo_run = GameConfig.combo
+	_bump_combo_widget()
+	_show_combo_tick()
+	_show_moment("Close!", Color(0.7, 1.0, 0.85), 44)
+	_add_ultimate_charge(GameConfig.ultimate_charge_per_kill * 0.4)
 
 
 func _on_crash(pl: Node3D) -> void:
