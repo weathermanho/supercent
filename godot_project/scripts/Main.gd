@@ -776,6 +776,8 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> void:
 	if not _seen_first_hit:
 		_seen_first_hit = true
 		_show_moment("First Hit!", Color(1.0, 0.95, 0.55), 72, "+1 COMBO")
+	else:
+		_show_combo_tick()
 	_bump_combo_widget()
 
 	var pos: Vector3 = pl.core_world_pos()
@@ -1281,6 +1283,33 @@ func _bump_combo_widget() -> void:
 	var tw := create_tween()
 	tw.tween_property(_hud_combo, "scale", Vector2.ONE, 0.18) \
 		.set_trans(Tween.TRANS_BACK).set_ease(Tween.EASE_OUT)
+
+
+## Small "+1" that drifts up from beside the combo widget on every core hit, so
+## the combo count growing is FELT (the widget bump alone is too subtle and the
+## big "First Hit!" only fires once per run).
+func _show_combo_tick() -> void:
+	var l := Label.new()
+	l.text = "+1"
+	l.add_theme_font_size_override("font_size", 22)
+	l.add_theme_color_override("font_color", _tier_color(GameConfig.combo_tier))
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.65))
+	l.add_theme_constant_override("outline_size", 2)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.anchor_left = 1.0; l.anchor_right = 1.0
+	l.anchor_top = 0.0; l.anchor_bottom = 0.0
+	# Just below + to the left of the COMBO widget (which sits at right ~-150).
+	l.offset_left = -210.0
+	l.offset_right = -130.0
+	l.offset_top = 70.0
+	l.offset_bottom = 100.0
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(l)
+	var tw := create_tween()
+	tw.tween_property(l, "modulate:a", 0.0, 0.65)
+	tw.parallel().tween_property(l, "offset_top", l.offset_top + 34.0, 0.65)
+	tw.parallel().tween_property(l, "offset_bottom", l.offset_bottom + 34.0, 0.65)
+	tw.tween_callback(l.queue_free)
 
 
 func _animate_heart_lost(slot: int) -> void:
