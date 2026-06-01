@@ -13,7 +13,7 @@ config_version=5
 config/name="AviatorToSky"
 config/description="Godot 4 port of a C++/OpenGL flight game (originally 'AVIATOR TO SKY')."
 run/main_scene="res://scenes/Main.tscn"
-config/features=PackedStringArray("4.3", "Forward Plus")
+config/features=PackedStringArray("4.3", "Mobile")
 
 [autoload]
 
@@ -47,4 +47,6 @@ quit_game={
 
 [rendering]
 
+renderer/rendering_method="mobile"
+renderer/rendering_method.mobile="mobile"
 environment/defaults/default_clear_color=Color(0.921569, 0.866667, 0.705882, 1)

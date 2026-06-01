@@ -6,3 +6,5 @@ eval/
 shots/
 Godot_v4.3-stable_win64.exe
 godot_project/scripts/_ShotCap.gd
+godot_project/android/
+build/
