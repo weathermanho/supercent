@@ -33,23 +33,37 @@ const VEL_SMOOTHING := 0.3  # 0=instant, 1=never updates
 func _ready() -> void:
 	corners.resize(8)
 
-	# Cockpit (tapered box)
-	add_child(BoxFactory.make_tapered_box(80, 50, 50, GameColors.RED))
+	# Fuselage / cockpit (tapered box) — green body.
+	add_child(BoxFactory.make_tapered_box(80, 50, 50, GameColors.PLANE_GREEN))
 
-	# Engine
-	var engine := BoxFactory.make_box(20, 50, 50, GameColors.WHITE)
+	# Engine cowl — orange nose block (the reference's bright orange front).
+	var engine := BoxFactory.make_box(22, 52, 52, GameColors.PLANE_ORANGE)
 	engine.position = Vector3(50.0, 0.0, 0.0)
 	add_child(engine)
 
-	# Tail
-	var tail := BoxFactory.make_box(15, 20, 5, GameColors.WHITE)
-	tail.position = Vector3(-40.0, 20.0, 0.0)
-	add_child(tail)
+	# Orange trim band where cowl meets the green body.
+	var trim := BoxFactory.make_box(8, 52, 54, GameColors.PLANE_ORANGE)
+	trim.position = Vector3(36.0, 0.0, 0.0)
+	add_child(trim)
 
-	# Wings
-	var wings := BoxFactory.make_box(30, 5, 120, GameColors.WHITE)
-	wings.position = Vector3(0.0, 15.0, 0.0)
+	# Vertical tail fin — green with orange leading edge.
+	var tail := BoxFactory.make_box(15, 28, 5, GameColors.PLANE_GREEN)
+	tail.position = Vector3(-40.0, 22.0, 0.0)
+	add_child(tail)
+	var tail_h := BoxFactory.make_box(22, 6, 30, GameColors.PLANE_GREEN)  # horizontal stabilizer
+	tail_h.position = Vector3(-40.0, 8.0, 0.0)
+	add_child(tail_h)
+
+	# Low wings — green with orange tips (low-wing monoplane like the ref).
+	var wings := BoxFactory.make_box(34, 6, 110, GameColors.PLANE_GREEN)
+	wings.position = Vector3(0.0, -2.0, 0.0)
 	add_child(wings)
+	var wingtip_l := BoxFactory.make_box(34, 6, 16, GameColors.PLANE_ORANGE)
+	wingtip_l.position = Vector3(0.0, -2.0, 60.0)
+	add_child(wingtip_l)
+	var wingtip_r := BoxFactory.make_box(34, 6, 16, GameColors.PLANE_ORANGE)
+	wingtip_r.position = Vector3(0.0, -2.0, -60.0)
+	add_child(wingtip_r)
 
 	# Wind shield (transparent)
 	var shield := BoxFactory.make_transparent_box(3, 15, 20, GameColors.BLUE, 0.7)
@@ -61,14 +75,14 @@ func _ready() -> void:
 	_propeller.position = Vector3(60.0, 0.0, 0.0)
 	add_child(_propeller)
 
-	_propeller.add_child(BoxFactory.make_box(20, 10, 10, GameColors.BROWN))
+	_propeller.add_child(BoxFactory.make_box(16, 14, 14, GameColors.BROWN_DARK))  # hub
 
-	var blade1 := BoxFactory.make_box(1, 80, 10, GameColors.BROWN_DARK)
-	blade1.position = Vector3(8.0, 0.0, 0.0)
+	var blade1 := BoxFactory.make_box(4, 90, 12, GameColors.PLANE_WOOD)
+	blade1.position = Vector3(6.0, 0.0, 0.0)
 	_propeller.add_child(blade1)
 
-	var blade2 := BoxFactory.make_box(1, 80, 10, GameColors.BROWN_DARK)
-	blade2.position = Vector3(8.0, 0.0, 0.0)
+	var blade2 := BoxFactory.make_box(4, 90, 12, GameColors.PLANE_WOOD)
+	blade2.position = Vector3(6.0, 0.0, 0.0)
 	blade2.rotation.x = PI / 2.0
 	_propeller.add_child(blade2)
 
@@ -80,7 +94,7 @@ func _ready() -> void:
 	add_child(pilot_holder)
 
 	# Wheels
-	var wheel_protec_r := BoxFactory.make_box(30, 15, 10, GameColors.RED)
+	var wheel_protec_r := BoxFactory.make_box(30, 15, 10, GameColors.PLANE_ORANGE)
 	wheel_protec_r.position = Vector3(25.0, -20.0, 25.0)
 	add_child(wheel_protec_r)
 
@@ -103,11 +117,11 @@ func _ready() -> void:
 	wheel_tire_b.scale = Vector3(0.5, 0.5, 0.5)
 	add_child(wheel_tire_b)
 
-	var wheel_protec_l := BoxFactory.make_box(30, 15, 10, GameColors.RED)
+	var wheel_protec_l := BoxFactory.make_box(30, 15, 10, GameColors.PLANE_ORANGE)
 	wheel_protec_l.position = Vector3(25.0, -20.0, -25.0)
 	add_child(wheel_protec_l)
 
-	var suspension := BoxFactory.make_box(4, 20, 4, GameColors.RED)
+	var suspension := BoxFactory.make_box(4, 20, 4, GameColors.PLANE_ORANGE)
 	suspension.position = Vector3(-32.5, 5.0, 0.0)
 	suspension.rotation.z = -deg_to_rad(0.3)
 	add_child(suspension)
