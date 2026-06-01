@@ -1405,6 +1405,7 @@ func _build_title_overlay() -> void:
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 14)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	center.add_child(vbox)
 
 	var title := _make_centered_label("AVIATOR TO SKY", 56, Color(1, 1, 1, 1))
@@ -1450,6 +1451,7 @@ func _build_gameover_overlay() -> void:
 
 	var vbox := VBoxContainer.new()
 	vbox.add_theme_constant_override("separation", 10)
+	vbox.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	center.add_child(vbox)
 
 	_gameover_title = _make_centered_label("RUN OVER", 48, Color(1, 1, 1, 1))
@@ -1482,6 +1484,9 @@ func _make_centered_label(text: String, size: int, color: Color) -> Label:
 	l.add_theme_font_size_override("font_size", size)
 	l.add_theme_color_override("font_color", color)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	# IGNORE so a tap on the title/recap text passes through to _unhandled_input
+	# (otherwise the centred "TAP TO RETRY" label eats the retry tap).
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return l
 
 
@@ -1988,11 +1993,14 @@ func _unhandled_input(event: InputEvent) -> void:
 ## Update knob position + analog vector from a touch point. Knob is clamped to
 ## JOY_RADIUS around the base centre; _joy_vec is the normalized deflection.
 func _update_joy_knob(touch_pos: Vector2) -> void:
-	var center: Vector2 = _joy_base.position + _joy_base.size * 0.5
-	var off: Vector2 = touch_pos - center
+	# touch_pos is in screen space; the knob is a CHILD of the base, so its
+	# position must be in base-LOCAL space (this was the bug — mixing spaces
+	# flung the knob off the base).
+	var base_center_screen: Vector2 = _joy_base.global_position + _joy_base.size * 0.5
+	var off: Vector2 = touch_pos - base_center_screen
 	if off.length() > JOY_RADIUS:
 		off = off.normalized() * JOY_RADIUS
-	_joy_knob.position = center + off - _joy_knob.size * 0.5
+	_joy_knob.position = _joy_base.size * 0.5 + off - _joy_knob.size * 0.5
 	_joy_vec = off / JOY_RADIUS
 
 
