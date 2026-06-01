@@ -36,25 +36,23 @@ func _ready() -> void:
 	# Fuselage / cockpit (tapered box) — green body.
 	add_child(BoxFactory.make_tapered_box(80, 50, 50, GameColors.PLANE_GREEN))
 
-	# Cockpit tub that WRAPS the pilot: a raised rear deck + side walls, open at
-	# the top so the pilot's head/shoulders show (open-cockpit look). Without
-	# this the pilot just sat exposed on the flat deck behind the propeller.
-	var rear_body := BoxFactory.make_box(56, 42, 50, GameColors.PLANE_GREEN)
-	rear_body.position = Vector3(-22.0, 12.0, 0.0)
+	# Cockpit tub that WRAPS the pilot only up to ELBOW height — head, shoulders
+	# and arms stay visible above the rim (open-cockpit look). Pilot sits at
+	# y≈27 (head) / y≈15 (body), so the tub rim is kept around y≈20.
+	var rear_body := BoxFactory.make_box(56, 34, 50, GameColors.PLANE_GREEN)
+	rear_body.position = Vector3(-22.0, 2.0, 0.0)   # top ≈ y19
 	add_child(rear_body)
-	var cockpit_wall_l := BoxFactory.make_box(46, 26, 6, GameColors.PLANE_GREEN_DARK)
-	cockpit_wall_l.position = Vector3(-12.0, 26.0, 21.0)
+	var cockpit_wall_l := BoxFactory.make_box(46, 16, 6, GameColors.PLANE_GREEN_DARK)
+	cockpit_wall_l.position = Vector3(-12.0, 12.0, 21.0)   # top ≈ y20
 	add_child(cockpit_wall_l)
-	var cockpit_wall_r := BoxFactory.make_box(46, 26, 6, GameColors.PLANE_GREEN_DARK)
-	cockpit_wall_r.position = Vector3(-12.0, 26.0, -21.0)
+	var cockpit_wall_r := BoxFactory.make_box(46, 16, 6, GameColors.PLANE_GREEN_DARK)
+	cockpit_wall_r.position = Vector3(-12.0, 12.0, -21.0)
 	add_child(cockpit_wall_r)
-	var cockpit_back := BoxFactory.make_box(8, 34, 44, GameColors.PLANE_GREEN_DARK)
-	cockpit_back.position = Vector3(-38.0, 28.0, 0.0)
+	# Seat back behind the pilot — a bit higher (supports the back, doesn't
+	# occlude from the chase view).
+	var cockpit_back := BoxFactory.make_box(8, 26, 40, GameColors.PLANE_GREEN_DARK)
+	cockpit_back.position = Vector3(-38.0, 18.0, 0.0)   # top ≈ y31
 	add_child(cockpit_back)
-	# Headrest / fairing behind the pilot's head.
-	var headrest := BoxFactory.make_box(10, 16, 24, GameColors.PLANE_GREEN)
-	headrest.position = Vector3(-34.0, 38.0, 0.0)
-	add_child(headrest)
 
 	# Engine cowl — orange nose block (the reference's bright orange front).
 	var engine := BoxFactory.make_box(22, 52, 52, GameColors.PLANE_ORANGE)
@@ -74,15 +72,19 @@ func _ready() -> void:
 	tail_h.position = Vector3(-40.0, 8.0, 0.0)
 	add_child(tail_h)
 
-	# Low wings — green with orange tips (low-wing monoplane like the ref).
-	var wings := BoxFactory.make_box(34, 6, 110, GameColors.PLANE_GREEN)
-	wings.position = Vector3(0.0, -2.0, 0.0)
+	# Low wings — TWO-TONE: green trailing half + orange leading edge stripe
+	# running the full span, plus orange tips. (Low-wing monoplane like the ref.)
+	var wings := BoxFactory.make_box(20, 6, 110, GameColors.PLANE_GREEN)
+	wings.position = Vector3(-7.0, -2.0, 0.0)        # green rear half
 	add_child(wings)
-	var wingtip_l := BoxFactory.make_box(34, 6, 16, GameColors.PLANE_ORANGE)
-	wingtip_l.position = Vector3(0.0, -2.0, 60.0)
+	var wing_lead := BoxFactory.make_box(16, 6, 110, GameColors.PLANE_ORANGE)
+	wing_lead.position = Vector3(10.0, -2.0, 0.0)     # orange leading-edge stripe
+	add_child(wing_lead)
+	var wingtip_l := BoxFactory.make_box(34, 6, 14, GameColors.PLANE_GREEN_DARK)
+	wingtip_l.position = Vector3(0.0, -2.0, 61.0)
 	add_child(wingtip_l)
-	var wingtip_r := BoxFactory.make_box(34, 6, 16, GameColors.PLANE_ORANGE)
-	wingtip_r.position = Vector3(0.0, -2.0, -60.0)
+	var wingtip_r := BoxFactory.make_box(34, 6, 14, GameColors.PLANE_GREEN_DARK)
+	wingtip_r.position = Vector3(0.0, -2.0, -61.0)
 	add_child(wingtip_r)
 
 	# Wind shield (transparent)
