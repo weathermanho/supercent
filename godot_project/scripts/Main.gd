@@ -1951,6 +1951,27 @@ func _tier_color(tier: int) -> Color:
 
 # ----- Input -----------------------------------------------------------------
 
+## Joystick is handled in _input (runs BEFORE GUI) so no Control can swallow the
+## drag. Left-half touches drive the stick; right-half (FIRE/ULT buttons) is
+## left for their gui_input. We do NOT accept_event so buttons still work.
+func _input(event: InputEvent) -> void:
+	if not _touch_mode:
+		return
+	if event is InputEventScreenTouch:
+		if GameConfig.status != GameConfig.STATUS_PLAYING:
+			return
+		var w: float = get_viewport().get_visible_rect().size.x
+		if event.pressed:
+			if event.position.x < w * 0.5:
+				_joy_touch_index = event.index
+				_update_joy_knob(event.position)
+		elif event.index == _joy_touch_index:
+			_release_joystick()
+	elif event is InputEventScreenDrag:
+		if event.index == _joy_touch_index:
+			_update_joy_knob(event.position)
+
+
 func _unhandled_input(event: InputEvent) -> void:
 	if event.is_action_pressed("reset_game"):
 		get_tree().reload_current_scene()
@@ -1959,24 +1980,7 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().quit()
 		return
 
-	# ---- Touch (mobile) — left-half fixed joystick (title/gameover taps are
-	# handled by the full-screen overlays' gui_input, not here) ----
-	if event is InputEventScreenTouch:
-		if GameConfig.status != GameConfig.STATUS_PLAYING:
-			return
-		if event.pressed:
-			var w: float = get_viewport().get_visible_rect().size.x
-			if event.position.x < w * 0.5:
-				_joy_touch_index = event.index
-				_update_joy_knob(event.position)
-		else:
-			if event.index == _joy_touch_index:
-				_release_joystick()
-		return
-	if event is InputEventScreenDrag:
-		if event.index == _joy_touch_index:
-			_update_joy_knob(event.position)
-		return
+	# (Joystick touch handled in _input so GUI controls can't swallow the drag.)
 
 	# Once in touch mode, ignore mouse events entirely.
 	if _touch_mode and (event is InputEventMouseButton or event is InputEventMouseMotion):
