@@ -76,7 +76,8 @@ var emerged_top_y: float = GROUND_Y
 var emerged_bottom_y: float = GROUND_Y
 
 
-func configure(kind_: int, breakable_: bool, from_ceiling_: bool = false) -> void:
+func configure(kind_: int, breakable_: bool, from_ceiling_: bool = false,
+		h_override: float = 0.0) -> void:
 	kind = kind_
 	breakable = breakable_
 	from_ceiling = from_ceiling_
@@ -106,11 +107,15 @@ func configure(kind_: int, breakable_: bool, from_ceiling_: bool = false) -> voi
 		_:  # NORMAL / cluster member — WIDE range so some are flyable-over
 			w = 50.0 + randf() * 150.0
 			d = 50.0 + randf() * 150.0
-			h = 130.0 + randf() * 280.0
+			h = 90.0 + randf() * 220.0   # 90..310 (was 130..410): more short pillars flyable over
 			telegraph_time = 0.55
 			rise_time = 0.55
 			telegraph_x = 2500.0
 
+	# Override the random height (HOP/DUCK waves force a specific h so the
+	# vertical clearance is the same across the whole cluster).
+	if h_override > 0.0:
+		h = h_override
 	# Cap ceiling pillars so the descended bottom can't punch through the floor.
 	if from_ceiling:
 		var max_h: float = CEILING_Y - GROUND_Y - 40.0

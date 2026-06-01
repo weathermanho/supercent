@@ -78,6 +78,15 @@ const SPIKE_SEQUENCE: Array[float] = [0.0, 90.0, 180.0, 90.0, 0.0, -90.0, -180.0
 ## current z so a target is always *reachable*.
 const MAX_GAP_REACH: float = 180.0
 
+## Vertical weave pattern. Most waves are lateral (mode 0 = normal cluster
+## with a gap). Every few waves a HOP wave (mode 1: low ground pillars across
+## ALL lanes — plane flies OVER) or DUCK wave (mode 2: low-hanging ceiling
+## pillars across all lanes — plane flies UNDER) interrupts the rhythm.
+const ALT_SEQUENCE: Array[int] = [0, 0, 0, 1, 0, 0, 0, 2, 0, 0]
+const ALT_NORMAL: int = 0
+const ALT_HOP: int = 1     # fly OVER short cluster
+const ALT_DUCK: int = 2    # fly UNDER hanging cluster
+
 # --- Per-run stats (shown on the game-over screen) ----------------------------
 var _max_combo_run: int = 0
 var _max_tier_run: int = 0
@@ -442,12 +451,21 @@ func _on_stage_advance(_old: int, new_stage: int) -> void:
 		_spawn_pillar(PillarScript.Kind.COLOSSUS, false, SPAWN_X - 400.0, z, true)
 
 
-## RHYTHMIC normal cluster — the gap z follows a smooth sine-like sequence
-## (`GAP_SEQUENCE`) instead of jumping to whichever lane is farthest from the
-## plane. The plane learns the rhythm and weaves with it. Gap stays within
-## reach of the plane's current z so the path is never impossible. Breakables
-## still CLUSTER in consecutive lanes for combo flow.
+## RHYTHMIC normal cluster — most waves leave a lateral gap (mode 0). Some
+## waves are HOP (mode 1: short ground cluster across ALL lanes, plane flies
+## over) or DUCK (mode 2: hanging cluster across all lanes, plane flies under)
+## so vertical weaving becomes part of the rhythm too.
 func _spawn_normal_cluster(count: int, allow_ceiling: bool = true) -> void:
+	var alt_mode: int = ALT_SEQUENCE[_wave_beat % ALT_SEQUENCE.size()]
+	if alt_mode == ALT_HOP:
+		_wave_beat += 1
+		_spawn_hop_wave()
+		return
+	if alt_mode == ALT_DUCK:
+		_wave_beat += 1
+		_spawn_duck_wave()
+		return
+
 	var lanes: Array[float] = [-200.0, -120.0, -45.0, 45.0, 120.0, 200.0]
 	var plane_z: float = airplane.position.z
 
@@ -526,12 +544,35 @@ func _spawn_colossus(breakable: bool, x: float, side: float, allow_ceiling: bool
 	_spawn_pillar(PillarScript.Kind.COLOSSUS, breakable, x, z, from_ceiling)
 
 
-func _spawn_pillar(kind: int, breakable: bool, x: float, z: float, from_ceiling: bool = false) -> void:
+func _spawn_pillar(kind: int, breakable: bool, x: float, z: float, from_ceiling: bool = false,
+		h_override: float = 0.0) -> void:
 	var p: Node3D = PillarScript.new()
-	p.configure(kind, breakable, from_ceiling)
+	p.configure(kind, breakable, from_ceiling, h_override)
 	add_child(p)
 	_pillars.append(p)
 	p.position = Vector3(x, p.position.y, z)
+
+
+## HOP wave — a short ground cluster filling every lane. There is NO lateral
+## gap; the player must FLY OVER by climbing the plane to a higher altitude.
+func _spawn_hop_wave() -> void:
+	_show_moment("HOP!", Color(0.7, 0.95, 1.0), 56, "climb over")
+	var lanes: Array[float] = [-200.0, -100.0, 0.0, 100.0, 200.0]
+	for z in lanes:
+		var h_force: float = 240.0 + randf() * 40.0   # top y ≈ 130
+		_spawn_pillar(PillarScript.Kind.NORMAL, false,
+			SPAWN_X + randf() * 200.0, z, false, h_force)
+
+
+## DUCK wave — a hanging ceiling cluster filling every lane. NO lateral gap;
+## the player must FLY UNDER by dropping the plane to a low altitude.
+func _spawn_duck_wave() -> void:
+	_show_moment("DUCK!", Color(1.0, 0.85, 0.5), 56, "drop under")
+	var lanes: Array[float] = [-200.0, -100.0, 0.0, 100.0, 200.0]
+	for z in lanes:
+		var h_force: float = 360.0 + randf() * 30.0   # bottom y ≈ 80
+		_spawn_pillar(PillarScript.Kind.NORMAL, false,
+			SPAWN_X + randf() * 200.0, z, true, h_force)
 
 
 ## Would a BREAKABLE spawned at (target_x, target_z) be masked by an existing
