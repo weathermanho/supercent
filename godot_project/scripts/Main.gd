@@ -117,15 +117,19 @@ var _seen_first_hit: bool = false
 var _seen_ult_ready: bool = false
 
 # --- Touch (mobile) controls -------------------------------------------------
-## Once any touch event is seen we switch from PC controls (mouse steer +
-## click-fire) to mobile controls (drag-to-steer + auto-fire), which avoids the
-## "plane lurches when you tap to fire" problem on phones/tablets.
+## On touchscreens we show a twin-stick layout: a floating analog joystick on
+## the left (push to steer), a FIRE button on the right (tap = one shot), and
+## the ULT gauge bar (tap when full). PC keeps mouse-steer + click/SPACE.
 var _touch_mode: bool = false
 var _steer_y: float = 0.0
 var _steer_z: float = 0.0
-var _autofire_acc: float = 0.0
-const AUTOFIRE_INTERVAL := 0.22
-const TOUCH_STEER_GAIN := 0.85   # screen-px → world-units per drag
+var _joy_base: Panel
+var _joy_knob: Panel
+var _fire_btn: Panel
+var _joy_touch_index: int = -1
+var _joy_vec: Vector2 = Vector2.ZERO
+const JOY_RADIUS := 95.0
+const STEER_SPEED := 330.0       # world units/sec at full stick deflection
 
 
 func _ready() -> void:
@@ -168,6 +172,12 @@ func _ready() -> void:
 	_build_gameover_overlay()
 	_build_play_hud()
 	_hide_legacy_labels()
+
+	# Touchscreen? Use the on-screen twin-stick controls.
+	_touch_mode = DisplayServer.is_touchscreen_available()
+	_steer_y = GameConfig.plane_default_height
+	_build_touch_controls()
+
 	_show_title()
 
 
@@ -193,13 +203,14 @@ func _process(delta: float) -> void:
 	_filter_invalid_pillars()
 
 	if _touch_mode:
-		# Mobile: steer toward the accumulated drag target; auto-fire on a timer.
-		airplane.set_world_target(Vector3(PLANE_BASE_X, _steer_y, _steer_z))
+		# Mobile: analog joystick PUSHES the steer target (direction + magnitude).
+		# Release → stick centres → plane settles. Firing is manual (FIRE button).
 		if GameConfig.status == GameConfig.STATUS_PLAYING:
-			_autofire_acc += delta
-			if _autofire_acc >= AUTOFIRE_INTERVAL:
-				_autofire_acc = 0.0
-				_fire_missle()
+			_steer_z = clampf(_steer_z + _joy_vec.x * STEER_SPEED * delta, -200.0, 200.0)
+			_steer_y = clampf(_steer_y - _joy_vec.y * STEER_SPEED * delta,
+				GameConfig.plane_default_height - GameConfig.plane_amp_height,
+				GameConfig.plane_default_height + GameConfig.plane_amp_height)
+		airplane.set_world_target(Vector3(PLANE_BASE_X, _steer_y, _steer_z))
 	else:
 		# PC: steer toward the camera-projected mouse cursor.
 		airplane.set_mouse_pos(_get_normalized_mouse())
@@ -1508,6 +1519,10 @@ func _set_play_hud_visible(v: bool) -> void:
 	if _hud_ult_label != null: _hud_ult_label.visible = v
 	for r in _hud_heart_rects:
 		r.visible = v
+	# Touch controls only when playing on a touchscreen.
+	if _fire_btn != null: _fire_btn.visible = v and _touch_mode
+	if not v:
+		_release_joystick()
 
 
 # ----- New in-play HUD -------------------------------------------------------
@@ -1909,29 +1924,31 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().quit()
 		return
 
-	# ---- Touch (mobile) ----
+	# ---- Touch (mobile) — left-half floating joystick ----
 	if event is InputEventScreenTouch:
-		if not _touch_mode:
-			_enter_touch_mode()
 		if event.pressed:
-			match GameConfig.status:
-				GameConfig.STATUS_TITLE:
-					_start_game()
-				GameConfig.STATUS_GAME_OVER:
-					get_tree().reload_current_scene()
-				# PLAYING: auto-fire handles shooting; touch-down only steers.
+			# Title / game-over: any tap starts / retries.
+			if GameConfig.status == GameConfig.STATUS_TITLE:
+				_start_game(); return
+			if GameConfig.status == GameConfig.STATUS_GAME_OVER:
+				get_tree().reload_current_scene(); return
+			# Playing: a touch in the LEFT half (not on a button) grabs the stick.
+			var w: float = get_viewport().get_visible_rect().size.x
+			if _joy_touch_index == -1 and event.position.x < w * 0.5:
+				_joy_touch_index = event.index
+				_joy_base.position = event.position - _joy_base.size * 0.5
+				_joy_base.visible = true
+				_update_joy_knob(event.position)
+		else:
+			if event.index == _joy_touch_index:
+				_release_joystick()
 		return
 	if event is InputEventScreenDrag:
-		if not _touch_mode:
-			_enter_touch_mode()
-		# Relative drag → move the steer target. No absolute jump → no lurch.
-		_steer_z = clampf(_steer_z + event.relative.x * TOUCH_STEER_GAIN, -200.0, 200.0)
-		_steer_y = clampf(_steer_y - event.relative.y * TOUCH_STEER_GAIN,
-			GameConfig.plane_default_height - GameConfig.plane_amp_height,
-			GameConfig.plane_default_height + GameConfig.plane_amp_height)
+		if event.index == _joy_touch_index:
+			_update_joy_knob(event.position)
 		return
 
-	# Once in touch mode, ignore emulated mouse events entirely.
+	# Once in touch mode, ignore mouse events entirely.
 	if _touch_mode and (event is InputEventMouseButton or event is InputEventMouseMotion):
 		return
 
@@ -1958,9 +1975,81 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_tree().reload_current_scene()
 
 
-## Switch to mobile control scheme; seed the steer target at the plane's
-## current position so the first drag doesn't snap.
-func _enter_touch_mode() -> void:
-	_touch_mode = true
-	_steer_y = airplane.position.y
-	_steer_z = airplane.position.z
+## Update knob position + analog vector from a touch point. Knob is clamped to
+## JOY_RADIUS around the base centre; _joy_vec is the normalized deflection.
+func _update_joy_knob(touch_pos: Vector2) -> void:
+	var center: Vector2 = _joy_base.position + _joy_base.size * 0.5
+	var off: Vector2 = touch_pos - center
+	if off.length() > JOY_RADIUS:
+		off = off.normalized() * JOY_RADIUS
+	_joy_knob.position = center + off - _joy_knob.size * 0.5
+	_joy_vec = off / JOY_RADIUS
+
+
+func _release_joystick() -> void:
+	_joy_touch_index = -1
+	_joy_vec = Vector2.ZERO
+	if _joy_base != null:
+		_joy_base.visible = false
+
+
+## Build the on-screen twin-stick controls (only shown on touchscreens): a
+## floating joystick (hidden until grabbed) + a FIRE button bottom-right.
+func _build_touch_controls() -> void:
+	var sz := 2.0 * JOY_RADIUS
+
+	_joy_base = _make_circle_panel(sz, Color(1, 1, 1, 0.10), Color(1, 1, 1, 0.35))
+	_joy_base.visible = false
+	_joy_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	hud.add_child(_joy_base)
+
+	_joy_knob = _make_circle_panel(sz * 0.45, Color(1, 1, 1, 0.30), Color(1, 1, 1, 0.6))
+	_joy_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_joy_base.add_child(_joy_knob)
+	_joy_knob.position = (_joy_base.size - _joy_knob.size) * 0.5
+
+	# FIRE button — bottom-right, tap = one shot.
+	_fire_btn = _make_circle_panel(150.0, Color(1.0, 0.4, 0.25, 0.32), Color(1.0, 0.5, 0.3, 0.7))
+	_fire_btn.anchor_left = 1.0; _fire_btn.anchor_right = 1.0
+	_fire_btn.anchor_top = 1.0; _fire_btn.anchor_bottom = 1.0
+	_fire_btn.offset_left = -180.0; _fire_btn.offset_right = -30.0
+	_fire_btn.offset_top = -180.0; _fire_btn.offset_bottom = -30.0
+	_fire_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	_fire_btn.gui_input.connect(_on_fire_btn_input)
+	hud.add_child(_fire_btn)
+	var fl := Label.new()
+	fl.text = "FIRE"
+	fl.add_theme_font_size_override("font_size", 26)
+	fl.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
+	fl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+	fl.add_theme_constant_override("outline_size", 3)
+	fl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	fl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	fl.anchor_right = 1.0; fl.anchor_bottom = 1.0
+	fl.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_fire_btn.add_child(fl)
+
+	var vis: bool = _touch_mode
+	_fire_btn.visible = vis
+
+
+## Make a circular Panel via a StyleBoxFlat with a huge corner radius.
+func _make_circle_panel(diameter: float, fill: Color, border: Color) -> Panel:
+	var p := Panel.new()
+	p.custom_minimum_size = Vector2(diameter, diameter)
+	p.size = Vector2(diameter, diameter)
+	var sb := StyleBoxFlat.new()
+	sb.bg_color = fill
+	sb.set_corner_radius_all(int(diameter * 0.5))
+	sb.border_color = border
+	sb.set_border_width_all(3)
+	p.add_theme_stylebox_override("panel", sb)
+	return p
+
+
+func _on_fire_btn_input(event: InputEvent) -> void:
+	var pressed: bool = (event is InputEventScreenTouch and event.pressed) \
+		or (event is InputEventMouseButton and event.pressed)
+	if pressed and GameConfig.status == GameConfig.STATUS_PLAYING:
+		_fire_missle()
+		_fire_btn.accept_event()
