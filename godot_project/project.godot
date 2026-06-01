@@ -26,6 +26,8 @@ Sfx="*res://scripts/Sfx.gd"
 
 window/size/viewport_width=1000
 window/size/viewport_height=700
+window/stretch/mode="viewport"
+window/stretch/aspect="expand"
 
 [input]
 

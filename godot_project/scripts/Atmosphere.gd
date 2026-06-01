@@ -74,6 +74,8 @@ func _setup_sun() -> void:
 	sun.rotation = Vector3(deg_to_rad(-45.0), deg_to_rad(-40.0), 0.0)
 	sun.light_energy = 1.1
 	sun.light_color = SUN_COLOR
-	sun.shadow_enabled = true
-	sun.directional_shadow_max_distance = 3000.0
+	# Shadows OFF — on older mobile GPUs (gl_compatibility) directional shadow
+	# mapping is a big per-frame cost for little visual gain in this flat-shaded
+	# style. Disabling lifts FPS, which also makes input feel snappier.
+	sun.shadow_enabled = false
 	add_child(sun)

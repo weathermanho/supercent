@@ -130,7 +130,9 @@ var _ult_btn: Panel
 var _joy_touch_index: int = -1
 var _joy_vec: Vector2 = Vector2.ZERO
 const JOY_RADIUS := 95.0
-const STEER_SPEED := 330.0       # world units/sec at full stick deflection
+const STEER_SPEED := 720.0       # world units/sec at full stick — snappy, the
+                                 # target reaches the edge fast so the plane
+                                 # chases hard (was 330 = sluggish).
 
 
 func _ready() -> void:
