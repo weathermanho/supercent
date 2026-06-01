@@ -1324,7 +1324,7 @@ func _update_hud() -> void:
 			var pulse: float = 0.6 + 0.4 * absf(sin(Time.get_ticks_msec() * 0.005))
 			_hud_ult_bar.color = Color(1.0, 0.88, 0.28, pulse)
 			if _hud_ult_label != null:
-				_hud_ult_label.text = "ULT READY!  (right-click / SPACE)"
+				_hud_ult_label.text = "★ ULT READY — TAP HERE ★"
 				_hud_ult_label.add_theme_color_override("font_color", Color(1, 1, 1, pulse))
 		else:
 			_hud_ult_bar.color = Color(1.0, 0.62, 0.18, 0.85)
@@ -1382,7 +1382,7 @@ func _build_title_overlay() -> void:
 	vbox.add_child(guide)
 	var guide2 := _make_centered_label("Reach TIER 2 to beat the Giant", 16, Color(1, 1, 1, 0.6))
 	vbox.add_child(guide2)
-	var guide3 := _make_centered_label("Fill the ULT bar  →  right-click / SPACE to unleash", 16, Color(1, 1, 1, 0.55))
+	var guide3 := _make_centered_label("Fill the ULT bar  →  TAP it to unleash", 16, Color(1, 1, 1, 0.55))
 	vbox.add_child(guide3)
 
 	var spacer2 := Control.new()
@@ -1533,14 +1533,17 @@ func _build_play_hud() -> void:
 	hud.add_child(_hud_best)
 
 	# Bottom-centre: ULTIMATE gauge — a slim warm bar that fills with action,
-	# pulses when ready, and tells the player "right-click / SPACE to unleash".
+	# pulses when ready. TAP IT (mobile) or press SPACE / right-click (desktop)
+	# to unleash. mouse_filter = STOP so a tap on the bar is caught here and
+	# doesn't also fire a missile. A generous tap target (taller than the bar).
 	_hud_ult_bg = ColorRect.new()
 	_hud_ult_bg.color = Color(0.12, 0.12, 0.16, 0.65)
 	_hud_ult_bg.anchor_left = 0.5; _hud_ult_bg.anchor_right = 0.5
 	_hud_ult_bg.anchor_top = 1.0; _hud_ult_bg.anchor_bottom = 1.0
-	_hud_ult_bg.offset_left = -180.0; _hud_ult_bg.offset_right = 180.0
-	_hud_ult_bg.offset_top = -72.0; _hud_ult_bg.offset_bottom = -38.0
-	_hud_ult_bg.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	_hud_ult_bg.offset_left = -200.0; _hud_ult_bg.offset_right = 200.0
+	_hud_ult_bg.offset_top = -78.0; _hud_ult_bg.offset_bottom = -34.0
+	_hud_ult_bg.mouse_filter = Control.MOUSE_FILTER_STOP
+	_hud_ult_bg.gui_input.connect(_on_ult_bar_input)
 	hud.add_child(_hud_ult_bg)
 
 	_hud_ult_bar = ColorRect.new()
@@ -1711,6 +1714,17 @@ func _add_ultimate_charge(amount: float) -> void:
 		if not _seen_ult_ready:
 			_seen_ult_ready = true
 			_show_moment("ULT READY!", Color(1.0, 0.88, 0.28), 64, "right-click / SPACE")
+
+
+## Tap/click on the ULT gauge bar — fires the ultimate when it's full (mobile
+## has no SPACE / right-click). Only consumes the tap when actually firing.
+func _on_ult_bar_input(event: InputEvent) -> void:
+	var pressed: bool = (event is InputEventScreenTouch and event.pressed) \
+		or (event is InputEventMouseButton and event.pressed)
+	if pressed and GameConfig.status == GameConfig.STATUS_PLAYING \
+	and GameConfig.ultimate_gauge >= GameConfig.ultimate_gauge_max:
+		_fire_ultimate()
+		_hud_ult_bg.accept_event()
 
 
 ## Spend the full ultimate gauge to detonate every visible breakable pillar in
