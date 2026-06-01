@@ -154,9 +154,10 @@ var missile_lock_radius: float = 120.0        # generous: lock without putting t
 var giant_distance_thresholds: Array[int] = [110, 230]
 var weapon_upgrade_distances: Array[int] = [40, 120]
 
-# Juice constants
-var shake_hit_intensity: float = 8.0
-var shake_hit_duration: float = 0.12
+# Juice constants — per-hit shake kept low to avoid eye fatigue. Giant-kill
+# and OVERCHARGE use shake_giant_intensity which stays heavy for impact.
+var shake_hit_intensity: float = 3.0
+var shake_hit_duration: float = 0.07
 var hitstop_duration: float = 0.05
 var slowmo_giant_scale: float = 0.25
 var slowmo_giant_duration: float = 1.5

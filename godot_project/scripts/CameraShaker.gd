@@ -5,7 +5,7 @@ extends Node
 ## on exit, so this does not interfere with whatever positions the camera.
 
 @export var trauma_decay: float = 4.0  # how fast intensity decays per second
-@export var rot_kick: float = 0.0015   # radians per unit of trauma
+@export var rot_kick: float = 0.0005   # gentle rotational kick (was 0.0015)
 
 var _camera: Camera3D
 var _base_position: Vector3

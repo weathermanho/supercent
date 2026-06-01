@@ -701,7 +701,9 @@ func _on_crash(pl: Node3D) -> void:
 	GameConfig.plane_collision_speed_x = 140.0 * diff.z / dl
 	GameConfig.plane_collision_speed_y = 90.0 * (1.0 if diff.y >= 0.0 else -1.0)
 
-	shaker.shake(GameConfig.shake_giant_intensity * 0.7, 0.35)
+	# Crash shake — light (was giant_intensity*0.7 = 21, fatigued the eye).
+	# Flash + hitstop + heart anim carry the impact.
+	shaker.shake(GameConfig.shake_hit_intensity * 1.2, 0.18)
 	time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
 	flash_overlay.flash(0.35, 0.12)   # warm/red damage flash
 	_spawn_explosion(airplane.position, SmokeBurstScript.Kind.PLANE_HIT, 1.0)
