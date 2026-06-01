@@ -116,6 +116,17 @@ var _hud_ult_label: Label
 var _seen_first_hit: bool = false
 var _seen_ult_ready: bool = false
 
+# --- Touch (mobile) controls -------------------------------------------------
+## Once any touch event is seen we switch from PC controls (mouse steer +
+## click-fire) to mobile controls (drag-to-steer + auto-fire), which avoids the
+## "plane lurches when you tap to fire" problem on phones/tablets.
+var _touch_mode: bool = false
+var _steer_y: float = 0.0
+var _steer_z: float = 0.0
+var _autofire_acc: float = 0.0
+const AUTOFIRE_INTERVAL := 0.22
+const TOUCH_STEER_GAIN := 0.85   # screen-px → world-units per drag
+
 
 func _ready() -> void:
 	GameConfig.reset_to_defaults()
@@ -181,8 +192,18 @@ func _process(delta: float) -> void:
 	# a freed node.
 	_filter_invalid_pillars()
 
-	airplane.set_mouse_pos(_get_normalized_mouse())
-	airplane.set_world_target(_get_world_cursor())
+	if _touch_mode:
+		# Mobile: steer toward the accumulated drag target; auto-fire on a timer.
+		airplane.set_world_target(Vector3(PLANE_BASE_X, _steer_y, _steer_z))
+		if GameConfig.status == GameConfig.STATUS_PLAYING:
+			_autofire_acc += delta
+			if _autofire_acc >= AUTOFIRE_INTERVAL:
+				_autofire_acc = 0.0
+				_fire_missle()
+	else:
+		# PC: steer toward the camera-projected mouse cursor.
+		airplane.set_mouse_pos(_get_normalized_mouse())
+		airplane.set_world_target(_get_world_cursor())
 
 	if GameConfig.status == GameConfig.STATUS_PLAYING:
 		_tick_playing(dt_ms)
@@ -1888,22 +1909,40 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().quit()
 		return
 
-	# Debug: log every key press so we can confirm SPACE reaches here.
-	if event is InputEventKey and event.pressed and not event.echo:
-		print("[INPUT] key=", event.keycode, " status=", GameConfig.status,
-			" ult_gauge=", GameConfig.ultimate_gauge,
-			" fire_ult_action=", event.is_action_pressed("fire_ult"))
+	# ---- Touch (mobile) ----
+	if event is InputEventScreenTouch:
+		if not _touch_mode:
+			_enter_touch_mode()
+		if event.pressed:
+			match GameConfig.status:
+				GameConfig.STATUS_TITLE:
+					_start_game()
+				GameConfig.STATUS_GAME_OVER:
+					get_tree().reload_current_scene()
+				# PLAYING: auto-fire handles shooting; touch-down only steers.
+		return
+	if event is InputEventScreenDrag:
+		if not _touch_mode:
+			_enter_touch_mode()
+		# Relative drag → move the steer target. No absolute jump → no lurch.
+		_steer_z = clampf(_steer_z + event.relative.x * TOUCH_STEER_GAIN, -200.0, 200.0)
+		_steer_y = clampf(_steer_y - event.relative.y * TOUCH_STEER_GAIN,
+			GameConfig.plane_default_height - GameConfig.plane_amp_height,
+			GameConfig.plane_default_height + GameConfig.plane_amp_height)
+		return
 
-	# ULTIMATE — checked FIRST via the custom "fire_ult" action (SPACE +
-	# right-click, bound in _ready) so default UI handlers can't intercept.
+	# Once in touch mode, ignore emulated mouse events entirely.
+	if _touch_mode and (event is InputEventMouseButton or event is InputEventMouseMotion):
+		return
+
+	# ULTIMATE (desktop) — SPACE / right-click via the custom action.
 	if event.is_action_pressed("fire_ult") and GameConfig.status == GameConfig.STATUS_PLAYING:
-		print("[ULT] fire_ult pressed, gauge=", GameConfig.ultimate_gauge,
-			" / max=", GameConfig.ultimate_gauge_max)
 		if GameConfig.ultimate_gauge >= GameConfig.ultimate_gauge_max:
 			_fire_ultimate()
 			get_viewport().set_input_as_handled()
 			return
 
+	# ---- PC: left-click / fire key ----
 	var left_click: bool = (event is InputEventMouseButton and event.pressed
 		and event.button_index == MOUSE_BUTTON_LEFT)
 	var primary: bool = left_click or event.is_action_pressed("fire_missle")
@@ -1917,3 +1956,11 @@ func _unhandled_input(event: InputEvent) -> void:
 			_fire_missle()
 		GameConfig.STATUS_GAME_OVER:
 			get_tree().reload_current_scene()
+
+
+## Switch to mobile control scheme; seed the steer target at the plane's
+## current position so the first drag doesn't snap.
+func _enter_touch_mode() -> void:
+	_touch_mode = true
+	_steer_y = airplane.position.y
+	_steer_z = airplane.position.z
