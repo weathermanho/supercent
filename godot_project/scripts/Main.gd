@@ -126,6 +126,7 @@ var _steer_z: float = 0.0
 var _joy_base: Panel
 var _joy_knob: Panel
 var _fire_btn: Panel
+var _ult_btn: Panel
 var _joy_touch_index: int = -1
 var _joy_vec: Vector2 = Vector2.ZERO
 const JOY_RADIUS := 95.0
@@ -1352,17 +1353,21 @@ func _update_hud() -> void:
 		var fill: float = clampf(GameConfig.ultimate_gauge / GameConfig.ultimate_gauge_max, 0.0, 1.0)
 		_hud_ult_bar.size = Vector2(_hud_ult_bg.size.x * fill, 34.0)
 		var ready: bool = fill >= 1.0
+		var playing: bool = GameConfig.status == GameConfig.STATUS_PLAYING
 		if ready:
 			var pulse: float = 0.6 + 0.4 * absf(sin(Time.get_ticks_msec() * 0.005))
 			_hud_ult_bar.color = Color(1.0, 0.88, 0.28, pulse)
 			if _hud_ult_label != null:
-				_hud_ult_label.text = "★ ULT READY — TAP HERE ★"
+				_hud_ult_label.text = "★ ULT READY ★"
 				_hud_ult_label.add_theme_color_override("font_color", Color(1, 1, 1, pulse))
 		else:
 			_hud_ult_bar.color = Color(1.0, 0.62, 0.18, 0.85)
 			if _hud_ult_label != null:
 				_hud_ult_label.text = "ULT  %d%%" % int(fill * 100)
 				_hud_ult_label.add_theme_color_override("font_color", Color(1, 1, 1, 0.85))
+		# Mobile ULT button appears only when ready.
+		if _ult_btn != null:
+			_ult_btn.visible = ready and playing and _touch_mode
 
 
 func _on_game_over() -> void:
@@ -1374,6 +1379,9 @@ func _on_game_over() -> void:
 		var SaveDataScript := preload("res://scripts/SaveData.gd")
 		SaveDataScript.save_best(GameConfig.best_distance)
 	Sfx.play("crash", 1.0)
+	# Hide the play HUD + touch buttons immediately so a retry tap isn't eaten
+	# by the (STOP) FIRE/ULT buttons during the death beat.
+	_set_play_hud_visible(false)
 	# Brief delay so the death juice (shake / falling plane) reads before the
 	# recap screen swoops in.
 	get_tree().create_timer(1.2).timeout.connect(func(): _show_gameover_screen(is_new_best))
@@ -1521,6 +1529,8 @@ func _set_play_hud_visible(v: bool) -> void:
 		r.visible = v
 	# Touch controls only when playing on a touchscreen.
 	if _fire_btn != null: _fire_btn.visible = v and _touch_mode
+	if _joy_base != null: _joy_base.visible = v and _touch_mode
+	if _ult_btn != null: _ult_btn.visible = false   # shown by _update_hud when full
 	if not v:
 		_release_joystick()
 
@@ -1932,12 +1942,12 @@ func _unhandled_input(event: InputEvent) -> void:
 				_start_game(); return
 			if GameConfig.status == GameConfig.STATUS_GAME_OVER:
 				get_tree().reload_current_scene(); return
-			# Playing: a touch in the LEFT half (not on a button) grabs the stick.
+			# Playing: a touch in the LEFT half grabs the (fixed) stick. ALWAYS
+			# re-grab — never gate on the old index, so a fresh touch after
+			# lifting always works (was the "re-touch doesn't steer" bug).
 			var w: float = get_viewport().get_visible_rect().size.x
-			if _joy_touch_index == -1 and event.position.x < w * 0.5:
+			if event.position.x < w * 0.5:
 				_joy_touch_index = event.index
-				_joy_base.position = event.position - _joy_base.size * 0.5
-				_joy_base.visible = true
 				_update_joy_knob(event.position)
 		else:
 			if event.index == _joy_touch_index:
@@ -1989,21 +1999,27 @@ func _update_joy_knob(touch_pos: Vector2) -> void:
 func _release_joystick() -> void:
 	_joy_touch_index = -1
 	_joy_vec = Vector2.ZERO
-	if _joy_base != null:
-		_joy_base.visible = false
+	# Fixed stick: just recentre the knob.
+	if _joy_base != null and _joy_knob != null:
+		_joy_knob.position = (_joy_base.size - _joy_knob.size) * 0.5
 
 
-## Build the on-screen twin-stick controls (only shown on touchscreens): a
-## floating joystick (hidden until grabbed) + a FIRE button bottom-right.
+## Build the on-screen controls (touchscreens only): a FIXED joystick bottom-
+## left, a FIRE button bottom-right, and an ULT button above FIRE (shown only
+## when the gauge is full).
 func _build_touch_controls() -> void:
 	var sz := 2.0 * JOY_RADIUS
 
-	_joy_base = _make_circle_panel(sz, Color(1, 1, 1, 0.10), Color(1, 1, 1, 0.35))
-	_joy_base.visible = false
+	# Fixed joystick base, bottom-left. Dark fill so it reads on bright sky.
+	_joy_base = _make_circle_panel(sz, Color(0.1, 0.12, 0.16, 0.45), Color(1, 1, 1, 0.7))
+	_joy_base.anchor_left = 0.0; _joy_base.anchor_right = 0.0
+	_joy_base.anchor_top = 1.0; _joy_base.anchor_bottom = 1.0
+	_joy_base.offset_left = 40.0; _joy_base.offset_right = 40.0 + sz
+	_joy_base.offset_top = -40.0 - sz; _joy_base.offset_bottom = -40.0
 	_joy_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(_joy_base)
 
-	_joy_knob = _make_circle_panel(sz * 0.45, Color(1, 1, 1, 0.30), Color(1, 1, 1, 0.6))
+	_joy_knob = _make_circle_panel(sz * 0.5, Color(0.95, 0.95, 1.0, 0.55), Color(1, 1, 1, 0.9))
 	_joy_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	_joy_base.add_child(_joy_knob)
 	_joy_knob.position = (_joy_base.size - _joy_knob.size) * 0.5
@@ -2017,20 +2033,44 @@ func _build_touch_controls() -> void:
 	_fire_btn.mouse_filter = Control.MOUSE_FILTER_STOP
 	_fire_btn.gui_input.connect(_on_fire_btn_input)
 	hud.add_child(_fire_btn)
-	var fl := Label.new()
-	fl.text = "FIRE"
-	fl.add_theme_font_size_override("font_size", 26)
-	fl.add_theme_color_override("font_color", Color(1, 1, 1, 0.92))
-	fl.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
-	fl.add_theme_constant_override("outline_size", 3)
-	fl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
-	fl.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
-	fl.anchor_right = 1.0; fl.anchor_bottom = 1.0
-	fl.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_fire_btn.add_child(fl)
+	_add_btn_label(_fire_btn, "FIRE", 26)
 
-	var vis: bool = _touch_mode
-	_fire_btn.visible = vis
+	# ULT button — above FIRE, only visible when the gauge is full.
+	_ult_btn = _make_circle_panel(130.0, Color(1.0, 0.82, 0.25, 0.4), Color(1.0, 0.9, 0.4, 0.85))
+	_ult_btn.anchor_left = 1.0; _ult_btn.anchor_right = 1.0
+	_ult_btn.anchor_top = 1.0; _ult_btn.anchor_bottom = 1.0
+	_ult_btn.offset_left = -170.0; _ult_btn.offset_right = -40.0
+	_ult_btn.offset_top = -330.0; _ult_btn.offset_bottom = -200.0
+	_ult_btn.mouse_filter = Control.MOUSE_FILTER_STOP
+	_ult_btn.gui_input.connect(_on_ult_btn_input)
+	_ult_btn.visible = false
+	hud.add_child(_ult_btn)
+	_add_btn_label(_ult_btn, "ULT", 24)
+
+	_fire_btn.visible = _touch_mode
+
+
+func _add_btn_label(btn: Control, text: String, size: int) -> void:
+	var l := Label.new()
+	l.text = text
+	l.add_theme_font_size_override("font_size", size)
+	l.add_theme_color_override("font_color", Color(1, 1, 1, 0.95))
+	l.add_theme_color_override("font_outline_color", Color(0, 0, 0, 0.7))
+	l.add_theme_constant_override("outline_size", 3)
+	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	l.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	l.anchor_right = 1.0; l.anchor_bottom = 1.0
+	l.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	btn.add_child(l)
+
+
+func _on_ult_btn_input(event: InputEvent) -> void:
+	var pressed: bool = (event is InputEventScreenTouch and event.pressed) \
+		or (event is InputEventMouseButton and event.pressed)
+	if pressed and GameConfig.status == GameConfig.STATUS_PLAYING \
+	and GameConfig.ultimate_gauge >= GameConfig.ultimate_gauge_max:
+		_fire_ultimate()
+		_ult_btn.accept_event()
 
 
 ## Make a circular Panel via a StyleBoxFlat with a huge corner radius.
