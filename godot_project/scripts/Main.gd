@@ -648,10 +648,11 @@ func _move_pillars(dt_ms: float) -> void:
 
 		# Eruption punch — a spike snapping up kicks the camera.
 		if pl.consume_erupt():
-			if pl.kind == PillarScript.Kind.SPIKE:
-				shaker.shake(GameConfig.shake_hit_intensity * 0.7, 0.12)
-			elif pl.kind == PillarScript.Kind.COLOSSUS:
-				shaker.shake(GameConfig.shake_hit_intensity * 1.1, 0.25)
+			# SPIKE erupt: no shake (the snap is already visually loud, and
+			# spikes fire frequently → shake fatigue). COLOSSUS erupt: half the
+			# previous trauma — keeps the "looming" beat without tiring the eye.
+			if pl.kind == PillarScript.Kind.COLOSSUS:
+				shaker.shake(GameConfig.shake_hit_intensity * 0.55, 0.2)
 			_spawn_dust(Vector3(pl.global_position.x, PillarScript.GROUND_Y + 6.0, pl.global_position.z), pl.w)
 
 		# Plane crash — vertical check uses both top AND bottom so hanging
@@ -701,9 +702,9 @@ func _on_crash(pl: Node3D) -> void:
 	GameConfig.plane_collision_speed_x = 140.0 * diff.z / dl
 	GameConfig.plane_collision_speed_y = 90.0 * (1.0 if diff.y >= 0.0 else -1.0)
 
-	# Crash shake — light (was giant_intensity*0.7 = 21, fatigued the eye).
-	# Flash + hitstop + heart anim carry the impact.
-	shaker.shake(GameConfig.shake_hit_intensity * 1.2, 0.18)
+	# Crash shake — minimal. Flash + hitstop + heart anim do the heavy lifting;
+	# adding much shake on top fatigued the eye.
+	shaker.shake(GameConfig.shake_hit_intensity * 0.5, 0.12)
 	time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
 	flash_overlay.flash(0.35, 0.12)   # warm/red damage flash
 	_spawn_explosion(airplane.position, SmokeBurstScript.Kind.PLANE_HIT, 1.0)
