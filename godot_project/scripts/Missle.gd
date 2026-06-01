@@ -32,6 +32,11 @@ var pierce: int = 0
 ## its AABB.
 var pillars_hit: Array = []
 
+const TRAIL_INTERVAL := 0.02   # seconds between trail line segments
+var _trail_acc: float = 0.0
+var _last_trail_pos: Vector3 = Vector3.ZERO
+var _trail_started: bool = false
+
 
 func _ready() -> void:
 	# Geometry: same boxy missile as before, but built so the nose is at
@@ -102,6 +107,58 @@ func step(dt_ms: float) -> void:
 		velocity = new_dir * spd
 		position += velocity * delta
 		_orient_to_dir(velocity)
+
+	# After motion: connect last trail point → current position with a glowing
+	# box segment. Tween fades; explicit timer guarantees cleanup.
+	if _boost_started:
+		_trail_acc += delta
+		if not _trail_started:
+			_trail_started = true
+			_last_trail_pos = global_position
+		elif _trail_acc >= TRAIL_INTERVAL:
+			_trail_acc = 0.0
+			_spawn_trail_segment(_last_trail_pos, global_position)
+			_last_trail_pos = global_position
+
+
+## Bright box segment between a → b, oriented so its length axis matches the
+## direction. Tween fades + explicit timer queue_free.
+func _spawn_trail_segment(a: Vector3, b: Vector3) -> void:
+	var seg_len: float = a.distance_to(b)
+	if seg_len < 0.5:
+		return
+	var mid: Vector3 = (a + b) * 0.5
+	var thick: float = 1.6 * missile_scale + 0.7 * float(tier) + 0.6
+
+	var mesh := BoxMesh.new()
+	mesh.size = Vector3(thick, thick, seg_len)
+	var mat := StandardMaterial3D.new()
+	mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	mat.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+	mat.no_depth_test = true
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	mat.emission_enabled = true
+	mat.emission = Color(1.0, 0.55, 0.18)
+	mat.emission_energy_multiplier = 3.0
+	mat.albedo_color = Color(1.0, 0.68, 0.25, 0.9)
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	mi.set_surface_override_material(0, mat)
+	get_parent().add_child(mi)
+	mi.global_position = mid
+	if (b - a).length_squared() > 0.01:
+		var look_up: Vector3 = Vector3.UP
+		if absf((b - a).normalized().dot(Vector3.UP)) > 0.95:
+			look_up = Vector3.RIGHT
+		mi.look_at(a, look_up)
+
+	const LIFE: float = 0.30
+	var tw := create_tween()
+	tw.tween_property(mat, "albedo_color:a", 0.0, LIFE)
+	tw.parallel().tween_property(mat, "emission_energy_multiplier", 0.0, LIFE)
+	get_tree().create_timer(LIFE + 0.05).timeout.connect(func():
+		if is_instance_valid(mi):
+			mi.queue_free())
 
 
 ## Reorients the mesh so its nose (local +X) points along `dir`.
