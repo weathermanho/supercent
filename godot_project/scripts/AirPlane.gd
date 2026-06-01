@@ -64,30 +64,19 @@ func _ready() -> void:
 	trim.position = Vector3(36.0, 0.0, 0.0)
 	add_child(trim)
 
-	# Tail boom extending back from the slim body, with proper tail surfaces at
-	# its end (the reference's tail sits well behind the cockpit).
-	var boom := BoxFactory.make_box(52, 14, 14, GameColors.PLANE_GREEN)
-	boom.position = Vector3(-66.0, 6.0, 0.0)   # spans x-92 .. -40
-	add_child(boom)
-
-	# Vertical fin — tall green fin + orange tip at the tail end.
-	var fin := BoxFactory.make_box(16, 30, 5, GameColors.PLANE_GREEN)
-	fin.position = Vector3(-84.0, 22.0, 0.0)
+	# Tail — NO separate boom. A trapezoidal vertical fin rises straight from the
+	# rear of the body, with small auxiliary horizontal wings on its left/right
+	# base (matches image.png's integrated tail).
+	var fin := _make_trapezoid_fin(34.0, 16.0, 34.0, 5.0, GameColors.PLANE_GREEN)
+	fin.position = Vector3(-40.0, 14.0, 0.0)
 	add_child(fin)
-	var fin_tip := BoxFactory.make_box(16, 8, 6, GameColors.PLANE_ORANGE)
-	fin_tip.position = Vector3(-84.0, 38.0, 0.0)
-	add_child(fin_tip)
-
-	# Horizontal stabilizer (rear wing) — green with orange tips.
-	var stab := BoxFactory.make_box(18, 5, 44, GameColors.PLANE_GREEN)
-	stab.position = Vector3(-84.0, 8.0, 0.0)
-	add_child(stab)
-	var stab_tip_l := BoxFactory.make_box(18, 5, 8, GameColors.PLANE_ORANGE)
-	stab_tip_l.position = Vector3(-84.0, 8.0, 26.0)
-	add_child(stab_tip_l)
-	var stab_tip_r := BoxFactory.make_box(18, 5, 8, GameColors.PLANE_ORANGE)
-	stab_tip_r.position = Vector3(-84.0, 8.0, -26.0)
-	add_child(stab_tip_r)
+	# Auxiliary horizontal stabilizers either side of the fin base (orange).
+	var stab_l := BoxFactory.make_box(16, 5, 24, GameColors.PLANE_ORANGE)
+	stab_l.position = Vector3(-42.0, 12.0, 16.0)
+	add_child(stab_l)
+	var stab_r := BoxFactory.make_box(16, 5, 24, GameColors.PLANE_ORANGE)
+	stab_r.position = Vector3(-42.0, 12.0, -16.0)
+	add_child(stab_r)
 
 	# Low wings — TWO-TONE: green trailing half + orange leading edge stripe
 	# running the full span, plus orange tips. (Low-wing monoplane like the ref.)
@@ -166,6 +155,48 @@ func _ready() -> void:
 	add_child(suspension)
 
 	_prev_position = global_position
+
+
+## Build a trapezoidal vertical fin (thin in Z) as an ArrayMesh. Profile lies
+## in the X-Y plane: bottom edge length `bottom`, top edge length `top`
+## (centered, so it's a symmetric trapezoid narrowing upward), height `h`,
+## thickness `thick`. Origin is at the bottom-centre.
+func _make_trapezoid_fin(bottom: float, top: float, h: float, thick: float, color: Color) -> MeshInstance3D:
+	var hb := bottom * 0.5
+	var ht := top * 0.5
+	var hz := thick * 0.5
+	# 4 profile points (front +X, rear -X), front/back faces at ±hz.
+	# front face (z=+hz)
+	var f0 := Vector3(hb, 0.0, hz)    # bottom-front
+	var f1 := Vector3(-hb, 0.0, hz)   # bottom-rear
+	var f2 := Vector3(-ht, h, hz)     # top-rear
+	var f3 := Vector3(ht, h, hz)      # top-front
+	# back face (z=-hz)
+	var b0 := Vector3(hb, 0.0, -hz)
+	var b1 := Vector3(-hb, 0.0, -hz)
+	var b2 := Vector3(-ht, h, -hz)
+	var b3 := Vector3(ht, h, -hz)
+
+	var st := SurfaceTool.new()
+	st.begin(Mesh.PRIMITIVE_TRIANGLES)
+	var quad := func(p0: Vector3, p1: Vector3, p2: Vector3, p3: Vector3) -> void:
+		var n: Vector3 = (p1 - p0).cross(p2 - p0).normalized()
+		for v in [p0, p1, p2, p0, p2, p3]:
+			st.set_normal(n); st.add_vertex(v)
+	quad.call(f0, f1, f2, f3)   # front
+	quad.call(b3, b2, b1, b0)   # back
+	quad.call(f3, f2, b2, b3)   # top
+	quad.call(b0, b1, f1, f0)   # bottom
+	quad.call(f0, f3, b3, b0)   # leading (+X)
+	quad.call(b1, b2, f2, f1)   # trailing (-X)
+
+	var mi := MeshInstance3D.new()
+	mi.mesh = st.commit()
+	var mat := StandardMaterial3D.new()
+	mat.albedo_color = color
+	mat.roughness = 0.85
+	mi.set_surface_override_material(0, mat)
+	return mi
 
 
 func set_mouse_pos(p: Vector2) -> void:
