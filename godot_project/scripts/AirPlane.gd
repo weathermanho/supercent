@@ -68,7 +68,9 @@ func _ready() -> void:
 	# (body rear ≈ x-44), narrowing backward; the trapezoidal vertical fin
 	# rises from the END of that cone (not stabbed into the mid-body), with
 	# small auxiliary horizontal wings on its left/right base.
-	var tail_cone := BoxFactory.make_tapered_box(40, 22, 22, GameColors.PLANE_GREEN)
+	# Plain slim tail boom box (the tapered-box version pinched lopsidedly and
+	# read as a weird object) — bridges body rear to the fin cleanly.
+	var tail_cone := BoxFactory.make_box(40, 16, 16, GameColors.PLANE_GREEN)
 	tail_cone.position = Vector3(-60.0, 8.0, 0.0)   # spans x-80..-40, overlaps body rear
 	add_child(tail_cone)
 
