@@ -39,19 +39,19 @@ func _ready() -> void:
 	# Cockpit tub that WRAPS the pilot only up to ELBOW height — head, shoulders
 	# and arms stay visible above the rim (open-cockpit look). Pilot sits at
 	# y≈27 (head) / y≈15 (body), so the tub rim is kept around y≈20.
-	var rear_body := BoxFactory.make_box(56, 34, 50, GameColors.PLANE_GREEN)
-	rear_body.position = Vector3(-22.0, 2.0, 0.0)   # top ≈ y19
+	# Slimmer body (narrower z) so it doesn't look bulky.
+	var rear_body := BoxFactory.make_box(48, 30, 36, GameColors.PLANE_GREEN)
+	rear_body.position = Vector3(-20.0, 3.0, 0.0)   # top ≈ y18
 	add_child(rear_body)
-	var cockpit_wall_l := BoxFactory.make_box(46, 16, 6, GameColors.PLANE_GREEN_DARK)
-	cockpit_wall_l.position = Vector3(-12.0, 12.0, 21.0)   # top ≈ y20
+	var cockpit_wall_l := BoxFactory.make_box(42, 16, 5, GameColors.PLANE_GREEN_DARK)
+	cockpit_wall_l.position = Vector3(-12.0, 12.0, 15.0)   # top ≈ y20
 	add_child(cockpit_wall_l)
-	var cockpit_wall_r := BoxFactory.make_box(46, 16, 6, GameColors.PLANE_GREEN_DARK)
-	cockpit_wall_r.position = Vector3(-12.0, 12.0, -21.0)
+	var cockpit_wall_r := BoxFactory.make_box(42, 16, 5, GameColors.PLANE_GREEN_DARK)
+	cockpit_wall_r.position = Vector3(-12.0, 12.0, -15.0)
 	add_child(cockpit_wall_r)
-	# Seat back behind the pilot — a bit higher (supports the back, doesn't
-	# occlude from the chase view).
-	var cockpit_back := BoxFactory.make_box(8, 26, 40, GameColors.PLANE_GREEN_DARK)
-	cockpit_back.position = Vector3(-38.0, 18.0, 0.0)   # top ≈ y31
+	# Seat back behind the pilot.
+	var cockpit_back := BoxFactory.make_box(8, 24, 30, GameColors.PLANE_GREEN_DARK)
+	cockpit_back.position = Vector3(-34.0, 17.0, 0.0)
 	add_child(cockpit_back)
 
 	# Engine cowl — orange nose block (the reference's bright orange front).
@@ -64,13 +64,30 @@ func _ready() -> void:
 	trim.position = Vector3(36.0, 0.0, 0.0)
 	add_child(trim)
 
-	# Vertical tail fin — green with orange leading edge.
-	var tail := BoxFactory.make_box(15, 28, 5, GameColors.PLANE_GREEN)
-	tail.position = Vector3(-40.0, 22.0, 0.0)
-	add_child(tail)
-	var tail_h := BoxFactory.make_box(22, 6, 30, GameColors.PLANE_GREEN)  # horizontal stabilizer
-	tail_h.position = Vector3(-40.0, 8.0, 0.0)
-	add_child(tail_h)
+	# Tail boom extending back from the slim body, with proper tail surfaces at
+	# its end (the reference's tail sits well behind the cockpit).
+	var boom := BoxFactory.make_box(52, 14, 14, GameColors.PLANE_GREEN)
+	boom.position = Vector3(-66.0, 6.0, 0.0)   # spans x-92 .. -40
+	add_child(boom)
+
+	# Vertical fin — tall green fin + orange tip at the tail end.
+	var fin := BoxFactory.make_box(16, 30, 5, GameColors.PLANE_GREEN)
+	fin.position = Vector3(-84.0, 22.0, 0.0)
+	add_child(fin)
+	var fin_tip := BoxFactory.make_box(16, 8, 6, GameColors.PLANE_ORANGE)
+	fin_tip.position = Vector3(-84.0, 38.0, 0.0)
+	add_child(fin_tip)
+
+	# Horizontal stabilizer (rear wing) — green with orange tips.
+	var stab := BoxFactory.make_box(18, 5, 44, GameColors.PLANE_GREEN)
+	stab.position = Vector3(-84.0, 8.0, 0.0)
+	add_child(stab)
+	var stab_tip_l := BoxFactory.make_box(18, 5, 8, GameColors.PLANE_ORANGE)
+	stab_tip_l.position = Vector3(-84.0, 8.0, 26.0)
+	add_child(stab_tip_l)
+	var stab_tip_r := BoxFactory.make_box(18, 5, 8, GameColors.PLANE_ORANGE)
+	stab_tip_r.position = Vector3(-84.0, 8.0, -26.0)
+	add_child(stab_tip_r)
 
 	# Low wings — TWO-TONE: green trailing half + orange leading edge stripe
 	# running the full span, plus orange tips. (Low-wing monoplane like the ref.)
