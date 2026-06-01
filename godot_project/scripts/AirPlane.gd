@@ -64,18 +64,26 @@ func _ready() -> void:
 	trim.position = Vector3(36.0, 0.0, 0.0)
 	add_child(trim)
 
-	# Tail — NO separate boom. A trapezoidal vertical fin rises straight from the
-	# rear of the body, with small auxiliary horizontal wings on its left/right
-	# base (matches image.png's integrated tail).
-	var fin := _make_trapezoid_fin(34.0, 16.0, 34.0, 5.0, GameColors.PLANE_GREEN)
-	fin.position = Vector3(-40.0, 14.0, 0.0)
+	# Tail — a short tapered tail cone CONTINUES from the rear of the body
+	# (body rear ≈ x-44), narrowing backward; the trapezoidal vertical fin
+	# rises from the END of that cone (not stabbed into the mid-body), with
+	# small auxiliary horizontal wings on its left/right base.
+	var tail_cone := BoxFactory.make_tapered_box(40, 22, 22, GameColors.PLANE_GREEN)
+	tail_cone.position = Vector3(-60.0, 8.0, 0.0)   # spans x-80..-40, overlaps body rear
+	add_child(tail_cone)
+
+	var fin := _make_trapezoid_fin(30.0, 14.0, 32.0, 5.0, GameColors.PLANE_GREEN)
+	fin.position = Vector3(-66.0, 14.0, 0.0)        # rises from the tail-cone end
 	add_child(fin)
+	var fin_tip := BoxFactory.make_box(10, 7, 6, GameColors.PLANE_ORANGE)
+	fin_tip.position = Vector3(-72.0, 44.0, 0.0)
+	add_child(fin_tip)
 	# Auxiliary horizontal stabilizers either side of the fin base (orange).
-	var stab_l := BoxFactory.make_box(16, 5, 24, GameColors.PLANE_ORANGE)
-	stab_l.position = Vector3(-42.0, 12.0, 16.0)
+	var stab_l := BoxFactory.make_box(16, 5, 22, GameColors.PLANE_ORANGE)
+	stab_l.position = Vector3(-68.0, 10.0, 14.0)
 	add_child(stab_l)
-	var stab_r := BoxFactory.make_box(16, 5, 24, GameColors.PLANE_ORANGE)
-	stab_r.position = Vector3(-42.0, 12.0, -16.0)
+	var stab_r := BoxFactory.make_box(16, 5, 22, GameColors.PLANE_ORANGE)
+	stab_r.position = Vector3(-68.0, 10.0, -14.0)
 	add_child(stab_r)
 
 	# Low wings — TWO-TONE: green trailing half + orange leading edge stripe
@@ -190,11 +198,14 @@ func _make_trapezoid_fin(bottom: float, top: float, h: float, thick: float, colo
 	quad.call(f0, f3, b3, b0)   # leading (+X)
 	quad.call(b1, b2, f2, f1)   # trailing (-X)
 
+	st.generate_normals()
 	var mi := MeshInstance3D.new()
 	mi.mesh = st.commit()
 	var mat := StandardMaterial3D.new()
 	mat.albedo_color = color
 	mat.roughness = 0.85
+	# Render both sides so an inconsistent winding can't leave a face black.
+	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
 	mi.set_surface_override_material(0, mat)
 	return mi
 
