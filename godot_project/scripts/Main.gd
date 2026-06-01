@@ -206,6 +206,8 @@ func _process(delta: float) -> void:
 	if _touch_mode:
 		# Mobile: analog joystick PUSHES the steer target (direction + magnitude).
 		# Release → stick centres → plane settles. Firing is manual (FIRE button).
+		if _joy_touch_index == -1:
+			_recenter_knob()    # keep knob parked on the base while idle
 		if GameConfig.status == GameConfig.STATUS_PLAYING:
 			_steer_z = clampf(_steer_z + _joy_vec.x * STEER_SPEED * delta, -200.0, 200.0)
 			_steer_y = clampf(_steer_y - _joy_vec.y * STEER_SPEED * delta,
@@ -1394,7 +1396,15 @@ func _build_title_overlay() -> void:
 	_title_layer.anchor_right = 1.0
 	_title_layer.anchor_bottom = 1.0
 	_title_layer.color = Color(0.0, 0.0, 0.0, 0.45)
-	_title_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Full-screen STOP + gui_input so a tap ANYWHERE reliably starts the game,
+	# without depending on the event reaching _unhandled_input.
+	_title_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	_title_layer.gui_input.connect(func(e):
+		var p: bool = (e is InputEventScreenTouch and e.pressed) \
+			or (e is InputEventMouseButton and e.pressed)
+		if p and GameConfig.status == GameConfig.STATUS_TITLE:
+			_start_game()
+			_title_layer.accept_event())
 	hud.add_child(_title_layer)
 
 	var center := CenterContainer.new()
@@ -1439,7 +1449,13 @@ func _build_gameover_overlay() -> void:
 	_gameover_layer.anchor_right = 1.0
 	_gameover_layer.anchor_bottom = 1.0
 	_gameover_layer.color = Color(0.0, 0.0, 0.0, 0.55)
-	_gameover_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	# Full-screen STOP + gui_input so a tap ANYWHERE retries reliably.
+	_gameover_layer.mouse_filter = Control.MOUSE_FILTER_STOP
+	_gameover_layer.gui_input.connect(func(e):
+		var p: bool = (e is InputEventScreenTouch and e.pressed) \
+			or (e is InputEventMouseButton and e.pressed)
+		if p and GameConfig.status == GameConfig.STATUS_GAME_OVER:
+			get_tree().reload_current_scene())
 	_gameover_layer.visible = false
 	hud.add_child(_gameover_layer)
 
@@ -1533,11 +1549,15 @@ func _set_play_hud_visible(v: bool) -> void:
 	for r in _hud_heart_rects:
 		r.visible = v
 	# Touch controls only when playing on a touchscreen.
-	if _fire_btn != null: _fire_btn.visible = v and _touch_mode
-	if _joy_base != null: _joy_base.visible = v and _touch_mode
+	var tv: bool = v and _touch_mode
+	if _fire_btn != null: _fire_btn.visible = tv
+	if _joy_base != null: _joy_base.visible = tv
+	if _joy_knob != null: _joy_knob.visible = tv
 	if _ult_btn != null: _ult_btn.visible = false   # shown by _update_hud when full
 	if not v:
 		_release_joystick()
+	if tv:
+		_recenter_knob()
 
 
 # ----- New in-play HUD -------------------------------------------------------
@@ -1939,17 +1959,12 @@ func _unhandled_input(event: InputEvent) -> void:
 		get_tree().quit()
 		return
 
-	# ---- Touch (mobile) — left-half floating joystick ----
+	# ---- Touch (mobile) — left-half fixed joystick (title/gameover taps are
+	# handled by the full-screen overlays' gui_input, not here) ----
 	if event is InputEventScreenTouch:
+		if GameConfig.status != GameConfig.STATUS_PLAYING:
+			return
 		if event.pressed:
-			# Title / game-over: any tap starts / retries.
-			if GameConfig.status == GameConfig.STATUS_TITLE:
-				_start_game(); return
-			if GameConfig.status == GameConfig.STATUS_GAME_OVER:
-				get_tree().reload_current_scene(); return
-			# Playing: a touch in the LEFT half grabs the (fixed) stick. ALWAYS
-			# re-grab — never gate on the old index, so a fresh touch after
-			# lifting always works (was the "re-touch doesn't steer" bug).
 			var w: float = get_viewport().get_visible_rect().size.x
 			if event.position.x < w * 0.5:
 				_joy_touch_index = event.index
@@ -1974,42 +1989,41 @@ func _unhandled_input(event: InputEvent) -> void:
 			get_viewport().set_input_as_handled()
 			return
 
-	# ---- PC: left-click / fire key ----
+	# ---- PC: left-click / fire key fires while PLAYING. (Title / game-over
+	# clicks are handled by the full-screen overlays' gui_input.) ----
 	var left_click: bool = (event is InputEventMouseButton and event.pressed
 		and event.button_index == MOUSE_BUTTON_LEFT)
 	var primary: bool = left_click or event.is_action_pressed("fire_missle")
-	if not primary:
-		return
-
-	match GameConfig.status:
-		GameConfig.STATUS_TITLE:
-			_start_game()
-		GameConfig.STATUS_PLAYING:
-			_fire_missle()
-		GameConfig.STATUS_GAME_OVER:
-			get_tree().reload_current_scene()
+	if primary and GameConfig.status == GameConfig.STATUS_PLAYING:
+		_fire_missle()
 
 
 ## Update knob position + analog vector from a touch point. Knob is clamped to
 ## JOY_RADIUS around the base centre; _joy_vec is the normalized deflection.
+func _joy_center() -> Vector2:
+	return _joy_base.global_position + _joy_base.size * 0.5
+
+
 func _update_joy_knob(touch_pos: Vector2) -> void:
-	# touch_pos is in screen space; the knob is a CHILD of the base, so its
-	# position must be in base-LOCAL space (this was the bug — mixing spaces
-	# flung the knob off the base).
-	var base_center_screen: Vector2 = _joy_base.global_position + _joy_base.size * 0.5
-	var off: Vector2 = touch_pos - base_center_screen
+	# Knob is a HUD sibling positioned in SCREEN space → no parent-local mixups.
+	var off: Vector2 = touch_pos - _joy_center()
 	if off.length() > JOY_RADIUS:
 		off = off.normalized() * JOY_RADIUS
-	_joy_knob.position = _joy_base.size * 0.5 + off - _joy_knob.size * 0.5
+	_joy_knob.global_position = _joy_center() + off - _joy_knob.size * 0.5
 	_joy_vec = off / JOY_RADIUS
 
 
 func _release_joystick() -> void:
 	_joy_touch_index = -1
 	_joy_vec = Vector2.ZERO
-	# Fixed stick: just recentre the knob.
+	_recenter_knob()
+
+
+## Park the knob over the base centre (screen space). Called on release + every
+## frame while idle so layout timing can't strand it.
+func _recenter_knob() -> void:
 	if _joy_base != null and _joy_knob != null:
-		_joy_knob.position = (_joy_base.size - _joy_knob.size) * 0.5
+		_joy_knob.global_position = _joy_center() - _joy_knob.size * 0.5
 
 
 ## Build the on-screen controls (touchscreens only): a FIXED joystick bottom-
@@ -2027,10 +2041,11 @@ func _build_touch_controls() -> void:
 	_joy_base.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	hud.add_child(_joy_base)
 
+	# Knob is a sibling (HUD child), positioned in screen space — avoids
+	# parent-local coordinate confusion entirely.
 	_joy_knob = _make_circle_panel(sz * 0.5, Color(0.95, 0.95, 1.0, 0.55), Color(1, 1, 1, 0.9))
 	_joy_knob.mouse_filter = Control.MOUSE_FILTER_IGNORE
-	_joy_base.add_child(_joy_knob)
-	_joy_knob.position = (_joy_base.size - _joy_knob.size) * 0.5
+	hud.add_child(_joy_knob)
 
 	# FIRE button — bottom-right, tap = one shot.
 	_fire_btn = _make_circle_panel(150.0, Color(1.0, 0.4, 0.25, 0.32), Color(1.0, 0.5, 0.3, 0.7))
