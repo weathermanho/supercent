@@ -688,6 +688,7 @@ func _on_near_miss(pl: Node3D) -> void:
 	_show_combo_tick()
 	_show_moment("Close!", Color(0.7, 1.0, 0.85), 44)
 	_add_ultimate_charge(GameConfig.ultimate_charge_per_kill * 0.4)
+	Sfx.play("near_miss", -8.0)
 
 
 func _on_crash(pl: Node3D) -> void:
@@ -708,6 +709,7 @@ func _on_crash(pl: Node3D) -> void:
 	time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
 	flash_overlay.flash(0.35, 0.12)   # warm/red damage flash
 	_spawn_explosion(airplane.position, SmokeBurstScript.Kind.PLANE_HIT, 1.0)
+	Sfx.play("crash", -2.0)
 
 	if GameConfig.hp <= 0:
 		GameConfig.status = GameConfig.STATUS_GAME_OVER
@@ -804,6 +806,7 @@ func _move_structures(dt_ms: float) -> void:
 # ----- Missiles --------------------------------------------------------------
 
 func _fire_missle() -> void:
+	Sfx.play("fire", -5.0)
 	# Fan count rides the combo tier (1 / 2 / 3 shots).
 	match clampi(GameConfig.combo_tier + 1, 1, 3):
 		1:
@@ -1007,6 +1010,7 @@ func _fly_missles(dt_ms: float) -> void:
 				else:
 					_spawn_explosion(m.position, SmokeBurstScript.Kind.BLOCK_SPARK, 1.0)
 					shaker.shake(GameConfig.shake_hit_intensity * 0.6, 0.08)
+					Sfx.play("block", -10.0)
 					blocked = true
 				break
 		if broke:
@@ -1052,22 +1056,26 @@ func _on_core_hit(pl: Node3D, m: Node3D) -> bool:
 		shaker.shake(GameConfig.shake_hit_intensity * 0.7, 0.09)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration * 0.7)
 		_add_ultimate_charge(GameConfig.ultimate_charge_per_chip)
+		Sfx.play("giant_hit", -8.0)
 		# Tier may still rise on a chip hit — still celebrate it.
 		if GameConfig.combo_tier > prev_tier:
 			_show_moment("Tier %d!" % GameConfig.combo_tier, _tier_color(GameConfig.combo_tier), 88)
 			flash_overlay.flash(0.22, 0.10, false)
 			_add_ultimate_charge(GameConfig.ultimate_charge_per_tier_up)
+			Sfx.play("tier_up", -3.0)
 		return false
 
 	# Kill — full juice.
 	_spawn_explosion(pos, SmokeBurstScript.Kind.PILLAR_BREAK, float(m.tier + 1))
 	_add_ultimate_charge(GameConfig.ultimate_charge_per_kill)
+	Sfx.play("core_break", -5.0)
 	if GameConfig.combo_tier > prev_tier:
 		_show_moment("Tier %d!" % GameConfig.combo_tier, _tier_color(GameConfig.combo_tier), 88)
 		shaker.shake(GameConfig.shake_hit_intensity * 1.6, 0.2)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.4)
 		flash_overlay.flash(0.28, 0.12, false)
 		_add_ultimate_charge(GameConfig.ultimate_charge_per_tier_up)
+		Sfx.play("tier_up", -2.0)
 	else:
 		shaker.shake(GameConfig.shake_hit_intensity, GameConfig.shake_hit_duration)
 		time_scaler.request_hitstop(GameConfig.hitstop_duration)
@@ -1102,11 +1110,13 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 		time_scaler.request_hitstop(GameConfig.hitstop_duration * 1.5)
 		flash_overlay.flash(0.22, 0.10)
 		_add_ultimate_charge(GameConfig.ultimate_charge_per_giant_chip)
+		Sfx.play("giant_hit", -3.0)
 		return
 
 	# Giant defeated: bump the run-stats counter for the recap screen.
 	_giants_killed_run += 1
 	_show_moment("Giant Down!", Color(1.0, 0.45, 0.25), 92)
+	Sfx.play("giant_finish", 0.0)
 	_add_ultimate_charge(GameConfig.ultimate_charge_per_giant_kill)
 	# Finish: full showpiece combo — a cluster of big plumes across the giant so
 	# it reads as a screen-erasing detonation.
@@ -1125,6 +1135,7 @@ func _on_giant_hit(g: Node3D, killed: bool) -> void:
 		_show_moment("OVERCHARGE!", Color(1.0, 0.55, 0.18), 108)
 		flash_overlay.flash(0.5, 0.4, false)
 		shaker.shake(GameConfig.shake_giant_intensity * 1.2, 0.6)
+		Sfx.play("ult", 0.0)
 		var giant_pos: Vector3 = g.position
 		var ordered: Array = _pillars.duplicate()
 		ordered.sort_custom(func(a, b):
@@ -1330,6 +1341,7 @@ func _on_game_over() -> void:
 		GameConfig.best_distance = traveled
 		var SaveDataScript := preload("res://scripts/SaveData.gd")
 		SaveDataScript.save_best(GameConfig.best_distance)
+	Sfx.play("crash", 1.0)
 	# Brief delay so the death juice (shake / falling plane) reads before the
 	# recap screen swoops in.
 	get_tree().create_timer(1.2).timeout.connect(func(): _show_gameover_screen(is_new_best))
@@ -1441,6 +1453,7 @@ func _show_title() -> void:
 
 
 func _start_game() -> void:
+	Sfx.play("ui", -3.0)
 	GameConfig.status = GameConfig.STATUS_PLAYING
 	_title_layer.visible = false
 	_gameover_layer.visible = false
@@ -1709,6 +1722,7 @@ func _fire_ultimate() -> void:
 	if GameConfig.ultimate_gauge < GameConfig.ultimate_gauge_max:
 		return
 	GameConfig.ultimate_gauge = 0.0
+	Sfx.play("ult", 1.0)
 
 	# Visible "energy release" — FIVE concentric shockwaves grow in lockstep
 	# with the plane at the centre, plus a big bright explosion at the plane's
